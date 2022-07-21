@@ -3,6 +3,7 @@ from matplotlib.patches import Rectangle
 import numpy as np
 import config
 import param
+from fit import fit
 
 from Spectrum import Spectrum
 
@@ -35,7 +36,7 @@ def prepare_plot(intervals_dict, figsize=(20, 8)):
     return fig, ax
 
 
-class Intervals_collector:
+class InteractiveLineFit:
     def __init__(self, fig):
         self.continuum = intervals_dict['continuum']
         self.masks = []
@@ -44,6 +45,7 @@ class Intervals_collector:
         self.cid2 = fig.canvas.mpl_connect('close_event', self.on_close)
         self.continuum_mode = False
         self.masks_mode = False
+        self.fit_mode = False
         self.fig = fig
         self.ax = fig.gca()
         self.spans = []
@@ -51,16 +53,15 @@ class Intervals_collector:
     def on_key(self, event):
         if event.key == 'c':
             print("Seleziona intervalli per il continuo (max 4 punti); 'canc' per eliminare ultima selezione")
+            self._reset_mode()
             self.continuum_mode = True
-            self.masks_mode = False
         elif event.key == 'm':
             print("Seleziona coppie di punti per mascherare un intervallo; 'canc' per eliminare ultima selezione")
-            self.continuum_mode = False
+            self._reset_mode()
             self.masks_mode = True
         elif event.key == 'r':
             print("Premere 'c' per il continuo; 'm' per le maschere; 'f4' per terminare e salvare")
-            self.continuum_mode = False
-            self.masks_mode = False
+            self._reset_mode()
         elif event.key == 'delete':
             try:
                 if self.continuum_mode:
@@ -93,7 +94,10 @@ class Intervals_collector:
                 print(
                 f"Punti continuo: {len(self.continuum)}/4\tPunti maschera: {len(self.masks)}"
                 )
-        # elif event.key == 'f':
+        elif event.key == 'f':
+            self.fit_mode = True
+            self.masks_mode = False
+            self.continuum_mode = False
 
 
     def on_click(self, event):
@@ -121,6 +125,10 @@ class Intervals_collector:
             self.ax.plot(x_bin, q + m*x_bin, color='red')
         self.fig.canvas.draw()
 
+    def _reset_mode(self):
+        self.fit_mode = False
+        self.continuum_mode = False
+        self.masks_mode = False
 
 def continuum_fit(wl, flux, interval):
     continuum_mask = (
@@ -137,8 +145,10 @@ def continuum_fit(wl, flux, interval):
 
 if __name__ == '__main__':
     file_path = 'examples/sample.fits'
-    obj = Spectrum(file_path, redshift=3)
+    redshift = 3
+    obj = Spectrum(file_path, redshift=redshift)
     wl, fl = obj.get_spectrum()
+    ivar = obj.get_ivar()
 
     intervals_dict = {
         'name': "Name",
@@ -150,12 +160,16 @@ if __name__ == '__main__':
     intervals_dict['m'] = m
     intervals_dict['q'] = q
 
+    f1350 = param.calc_f1350(intervals_dict['m'], intervals_dict['q'])
+
     fig, ax = prepare_plot(intervals_dict, figsize=(15, 6))
 
-    intervals = Intervals_collector(fig)
+    interactive_plot = InteractiveLineFit(fig)
     plt.show()
 
-    print(intervals_dict)
+    par, cov = fit(wl, fl, ivar, n_components=2, mode='gaussian_mixture')
+    par_dict = param.calc_params(par, redshift)
+
     # with open(os.path.join(file_path, 'pre_fit.pkl'), 'wb') as f:
     #     pickle.dump(intervals_dict, f)
 

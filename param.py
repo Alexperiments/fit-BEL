@@ -1,7 +1,7 @@
 import math
 import config
 import numpy as np
-from scipy.optimize import curve_fit
+from fit import extract_param_gaussians
 
 
 def calc_mass(luminosity, sigma=None, fwhm=None, relation='VP06'):
@@ -37,19 +37,8 @@ def calc_mass(luminosity, sigma=None, fwhm=None, relation='VP06'):
             return 2 * np.log10(fwhm / 1000) + 0.53 * (luminosity - 44) + 6.66
 
 
-def calc_line_dispersion(A, mean1, sigma1, B=0, mean2=0, sigma2=1, C=0, mean3=0, sigma3=1):
-    area = (A * sigma1 + B * sigma2 + C * sigma3)
-    integral = np.sqrt(2 * math.pi) * area
-    centroid = (A * mean1 * sigma1 + B * mean2 * sigma2 + C * mean3 * sigma3) / area
-    variance = ((mean1 ** 2 + sigma1 ** 2) * A * sigma1 + (mean2 ** 2 + sigma2 ** 2) * B * sigma2 + (
-                mean3 ** 2 + sigma3 ** 2) * C * sigma3) / area - centroid * centroid
-    return integral, np.sqrt(variance)
-
-
-def calc_fwhm(x, ym):
-    max_y = max(ym)  # Find the maximum y value
-    xs = x[ym >= max_y / 2.]
-    return max(xs) - min(xs)
+def calc_f1350(m, q):
+    return 1350 * m + q
 
 
 def flux_to_lum(flux, dl):
@@ -62,24 +51,24 @@ def calc_edd_ratio(lamL1350, mass):
     return Lbol - Ledd
 
 
-def gaussian_model(x, A, mean1, sigma1, B=0, mean2=0, sigma2=1, C=0, mean3=0, sigma3=1):
-    return (A * np.exp(-np.power((x - mean1) / sigma1, 2.) / 2.) +
-            B * np.exp(-np.power((x - mean2) / sigma2, 2.) / 2.) +
-            C * np.exp(-np.power((x - mean3) / sigma3, 2.) / 2.))
+def calc_params(pars, redshift, f1350):
+    d = {}
+    line_disp, fwhm, area = extract_param_gaussians(*pars)
 
+    dl, _ = utils.ned_calc(redshift)
 
-init_guess1 = [1, 1549, 30]
-init_guess2 = [1, 1549, 30, 1, 1549, 30]
-init_guess3 = [1, 1549, 30, 1, 1549, 30, 1, 1549, 30]
-bounds1 = [[0, 0, 0], [np.inf, np.inf, np.inf]]
-bounds2 = [2 * [0, 0, 0], 2 * [np.inf, np.inf, np.inf]]
-bounds3 = [3 * [0, 0, 0], 3 * [np.inf, np.inf, np.inf]]
+    d['LCIV'] = flux_to_lum(area, dl)
+    d['fwhm'] = fwhm * 299792 / 1549
+    d['line_disp'] = line_disp * 299792 / 1549
+    d['lamL1350'] = flux_to_lum(f1350, dl) + np.log10(1350)
+    d['Lbol'] = d['lamL1350'] + np.log10(config.BOLOMETRIC_CORRECTION)
+    d['Msigma'] = calc_mass(d['lamL1350'], sigma=d['line_disp'])
+    d['Mfwhm'] = calc_mass(d['lamL1350'], fwhm=d['fwhm'])
+    d['Rsigma'] = calc_edd_ratio(d['lamL1350'], d['Msigma'])
+    d['Rfwhm'] = calc_edd_ratio(d['lamL1350'], d['Mfwhm'])
+
+    return d
+
 
 if __name__ == '__main__':
-
-    wl = np.arange(1000)
-    sigma = np.ones
-    flux = gaussian_model(wl, 1, 10, 500)
-    init_guess = [1, 10, 500]
-    bounds = [[0,0,0], [np.inf, np.inf, np.inf]]
-    par1, pcov1 = curve_fit(gaussian_model, wl, flux, p0=init_guess1, bounds=bounds, sigma=1, maxfev = 500000)
+    pass

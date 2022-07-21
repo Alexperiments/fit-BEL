@@ -66,7 +66,7 @@ class Spectrum:
             config.IVAR_INTERVALS = config.IVAR_INTERVALS * (1 + self.redshift)
         mask = (self.wavelength >= config.IVAR_INTERVALS[0]) & (self.wavelength <= config.IVAR_INTERVALS[1])
         continuum = self.flux[mask]
-        return 1/(np.var(continuum.values))
+        return 1 / (np.var(continuum.values))
 
     def _read_data(self, skiprows, separator):
         if self.file_path.endswith('.txt'):
@@ -83,7 +83,6 @@ class Spectrum:
     def get_spectrum(self):
         return self.wavelength, self.flux
 
-
     def get_ivar(self):
         return self.ivar
 
@@ -92,6 +91,7 @@ class Spectrum:
 
     def __len__(self):
         return len(self.wavelength)
+
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -105,4 +105,3 @@ if __name__ == '__main__':
     print(len(obj))
     # plt.plot(wl, ivar)
     # plt.show()
-
