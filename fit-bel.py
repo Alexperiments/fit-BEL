@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import numpy as np
 import config
 
@@ -8,6 +9,32 @@ from Spectrum import Spectrum
 
 file_path = 'examples/sample.fits'
 a_v_extinction = 0.2
+
+
+def prepare_plot(intervals_dict, figsize=(20, 8)):
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111)
+    ax.plot(wl, fl, color='black', lw=0.5)
+    ax.set_title(intervals_dict['name'])
+    for xi in intervals_dict['continuum']:
+        ax.axvline(xi, color='green', ls='--')
+    for i in range(len(intervals_dict['masks']) // 2):
+        ax.axvspan(intervals_dict['masks'][i * 2], intervals_dict['masks'][i * 2 + 1])
+    x_bin = np.arange(intervals_dict['continuum'][0], intervals_dict['continuum'][3], 1)
+    ax.plot(x_bin, intervals_dict['q'] + intervals_dict['m'] * x_bin, color='red')
+
+    keys_legend = [
+        r'n: cancel all intervals',
+        r'c: continuum selection mode',
+        r'm: mask selection mode',
+        r'r: exit selection mode',
+        r'canc: cancel last entry',
+        r's: save intervals']
+    extra = Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0)
+    plt.legend([extra] * len(keys_legend), keys_legend, loc='upper right', title='Keys')
+
+    return fig, ax
+
 
 class Intervals_collector:
     def __init__(self, fig):
@@ -56,7 +83,7 @@ class Intervals_collector:
             intervals_dict['continuum'] = []
             self.continuum = []
             self.update()
-        elif event.key == 'f4':
+        elif event.key == 's':
             if (len(self.continuum) == 4) and (len(self.masks)%2 == 0):
                 intervals_dict['continuum'] = self.continuum
                 intervals_dict['masks'] = self.masks
@@ -67,6 +94,8 @@ class Intervals_collector:
                 print(
                 f"Punti continuo: {len(self.continuum)}/4\tPunti maschera: {len(self.masks)}"
                 )
+        
+
 
     def on_click(self, event):
         if self.continuum_mode:
@@ -95,12 +124,14 @@ class Intervals_collector:
 
 
 def continuum_fit(wl, flux, interval):
-    mask = (
+    continuum_mask = (
         ((wl >= interval[0]) &
         (wl < interval[1])) |
         ((wl >= interval[2]) &
         (wl < interval[3]))
     )
+    wl = wl[continuum_mask]
+    flux = flux[continuum_mask]
     m, q = np.polyfit(wl, flux, 1)
     return m, q
 
@@ -120,16 +151,8 @@ if __name__ == '__main__':
     intervals_dict['m'] = m
     intervals_dict['q'] = q
 
-    fig = plt.figure(figsize=(20, 8))
-    ax = fig.add_subplot(111)
-    ax.plot(wl, fl, color='black', lw=0.5)
-    ax.set_title(intervals_dict['name'])
-    for xi in intervals_dict['continuum']:
-        ax.axvline(xi, color='green', ls='--')
-    for i in range(len(intervals_dict['masks']) // 2):
-        ax.axvspan(intervals_dict['masks'][i * 2], intervals_dict['masks'][i * 2 + 1])
-    x_bin = np.arange(intervals_dict['continuum'][0], intervals_dict['continuum'][3], 1)
-    ax.plot(x_bin, intervals_dict['q'] + intervals_dict['m'] * x_bin, color='red')
+    fig, ax = prepare_plot(intervals_dict, figsize=(15, 6))
+
     intervals = Intervals_collector(fig)
     plt.show()
 
