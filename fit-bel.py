@@ -2,9 +2,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
 import config
+import param
 
-import os
-import pickle
 from Spectrum import Spectrum
 
 file_path = 'examples/sample.fits'
@@ -94,7 +93,7 @@ class Intervals_collector:
                 print(
                 f"Punti continuo: {len(self.continuum)}/4\tPunti maschera: {len(self.masks)}"
                 )
-        
+        # elif event.key == 'f':
 
 
     def on_click(self, event):
