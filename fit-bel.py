@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
+from matplotlib.artist import Artist
 from matplotlib.patches import Rectangle
 import numpy as np
 import config
 import param
-from fit import fit
+from fit import fit, gaussian_model
 
 from Spectrum import Spectrum
 
@@ -11,136 +12,255 @@ file_path = 'examples/sample.fits'
 a_v_extinction = 0.2
 
 
-def prepare_plot(intervals_dict, figsize=(20, 8)):
-    fig = plt.figure(figsize=figsize)
-    ax = fig.add_subplot(111)
-    ax.plot(wl, fl, color='black', lw=0.5)
-    ax.set_title(intervals_dict['name'])
-    for xi in intervals_dict['continuum']:
-        ax.axvline(xi, color='green', ls='--')
-    for i in range(len(intervals_dict['masks']) // 2):
-        ax.axvspan(intervals_dict['masks'][i * 2], intervals_dict['masks'][i * 2 + 1])
-    x_bin = np.arange(intervals_dict['continuum'][0], intervals_dict['continuum'][3], 1)
-    ax.plot(x_bin, intervals_dict['q'] + intervals_dict['m'] * x_bin, color='red')
-
-    keys_legend = [
-        r'n: cancel all intervals',
-        r'c: continuum selection mode',
-        r'm: mask selection mode',
-        r'r: exit selection mode',
-        r'canc: cancel last entry',
-        r's: save intervals']
-    extra = Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0)
-    plt.legend([extra] * len(keys_legend), keys_legend, loc='upper right', title='Keys')
-
-    return fig, ax
-
-
 class InteractiveLineFit:
-    def __init__(self, fig):
-        self.continuum = intervals_dict['continuum']
-        self.masks = []
-        self.cid1 = fig.canvas.mpl_connect('key_press_event', self.on_key)
-        self.cid2 = fig.canvas.mpl_connect('button_press_event', self.on_click)
-        self.cid2 = fig.canvas.mpl_connect('close_event', self.on_close)
-        self.continuum_mode = False
-        self.masks_mode = False
-        self.fit_mode = False
-        self.fig = fig
-        self.ax = fig.gca()
+    def __init__(self, wl, flux, ivar, obj_name='line fit', fit_model='gaussian_mixture', figsize=(15, 7)):
+        self.q = None
+        self.m = None
+        self.wl = wl
+        self.flux = flux
+        self.ivar = ivar
+        self.continuum_intervals = config.CONTINUUM_INTERVALS
+        self.continuum_selection_lines = []
+        self.continuum_fit_line = None
+        self.masks = config.DEFAULT_MASKS
         self.spans = []
+        self.fit_line = None
+        self.fit_pars = None
 
-    def on_key(self, event):
-        if event.key == 'c':
-            print("Seleziona intervalli per il continuo (max 4 punti); 'canc' per eliminare ultima selezione")
-            self._reset_mode()
-            self.continuum_mode = True
-        elif event.key == 'm':
-            print("Seleziona coppie di punti per mascherare un intervallo; 'canc' per eliminare ultima selezione")
-            self._reset_mode()
-            self.masks_mode = True
-        elif event.key == 'r':
-            print("Premere 'c' per il continuo; 'm' per le maschere; 'f4' per terminare e salvare")
-            self._reset_mode()
-        elif event.key == 'delete':
-            try:
-                if self.continuum_mode:
-                    self.continuum.pop()
-                    del self.ax.lines[1:]
-                    self.update()
-                elif self.masks_mode:
-                    self.masks.pop()
-                    self.masks.pop()
-                    self.spans[-1].remove()
-                    del self.spans[-1]
-                    self.fig.canvas.draw()
-                else: pass
-            except(IndexError):
-                print("Lista vuota!")
-                pass
-        elif event.key == 'n':
-            del self.ax.lines[1:]
-            intervals_dict['continuum'] = []
-            self.continuum = []
-            self.update()
-        elif event.key == 's':
-            if (len(self.continuum) == 4) and (len(self.masks)%2 == 0):
-                intervals_dict['continuum'] = self.continuum
-                intervals_dict['masks'] = self.masks
-                name = intervals_dict['name'] + '.png'
-                plt.savefig(config.PREPARATION_PLOTS+name, dpi=300)
-                plt.close(self.fig)
-            else:
-                print(
-                f"Punti continuo: {len(self.continuum)}/4\tPunti maschera: {len(self.masks)}"
-                )
-        elif event.key == 'f':
-            self.fit_mode = True
-            self.masks_mode = False
-            self.continuum_mode = False
+        self.continuum_mode = False
+        self.mask_mode = False
+        self.fit_mode = False
 
+        self.fit_model = fit_model
 
-    def on_click(self, event):
-        if self.continuum_mode:
-            if len(self.continuum) < 4:
-                self.continuum.append(event.xdata)
-            else: print("Ho già 4 punti per il continuo, rimuoverne qualcuno!")
-        elif self.masks_mode: self.masks.append(event.xdata)
-        self.update()
+        self.continuum_fit()
 
-    def on_close(self, event):
-        del self.continuum
-        del self.masks
+        self.intervals_dict = {
+            'name': obj_name,
+            'continuum': self.continuum_intervals,
+            'masks': self.masks,
+            'm': self.m,
+            'q': self.q,
+        }
 
-    def update(self):
-        for line in self.continuum:
-            self.ax.axvline(line, color='green', ls='--')
-        if (len(self.masks)%2 == 0) & (len(self.masks) != 0):
-            self.spans.append(self.ax.axvspan(self.masks[-2], self.masks[-1], alpha=0.5, color='gray'))
-        if len(self.continuum) == 4:
-            m, q = continuum_fit(wl, fl, self.continuum)
-            intervals_dict['m'] = m
-            intervals_dict['q'] = q
-            x_bin = np.arange(self.continuum[0], self.continuum[3], 1)
-            self.ax.plot(x_bin, q + m*x_bin, color='red')
+        self._init_plot(figsize)
+
+        self.cid1 = self.fig.canvas.mpl_connect('key_press_event', self.on_key)
+        self.cid2 = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
+        self.cid2 = self.fig.canvas.mpl_connect('close_event', self.on_close)
+
+    def _init_plot(self, figsize):
+        plt.rcParams['keymap.fullscreen'].remove('f')
+        plt.rcParams['keymap.save'].remove('s')
+
+        self.fig = plt.figure(figsize=figsize)
+        self.ax = self.fig.add_subplot(111)
+        self.ax.plot(self.wl, self.flux, color='black', lw=0.5)
+        self.ax.set_title(self.intervals_dict['name'])
+
+        self._draw_all()
+
+        keys_legend = [
+            r'n: cancel all intervals',
+            r'c: continuum selection mode',
+            r'm: mask selection mode',
+            r'f: fit selection mode',
+            r'r: exit selection mode',
+            r'canc: cancel last entry',
+            r's: save intervals']
+        extra = Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0)
+        plt.legend([extra] * len(keys_legend), keys_legend, loc='upper right', title='Keys')
+
+    def _draw_all(self):
+        for xi in self.continuum_intervals:
+            self._plot_continuum_line(xi)
+        for xi in self.masks:
+            self._add_mask(xi)
+        if len(self.continuum_intervals) == 4:
+            self._add_fit_continuum()
+
+    def _update_plot(self):
         self.fig.canvas.draw()
+
+    # Continuum intervals
+
+    def _add_continuum_point(self, xdata):
+        if len(self.continuum_intervals) < 4:
+            self.continuum_intervals.append(xdata)
+            self._plot_continuum_line(xdata)
+        else:
+            print("Remove a continuum point. press 'canc' in continuum mode.")
+        if len(self.continuum_intervals) == 4:
+            self._add_fit_continuum()
+
+    def _plot_continuum_line(self, xdata):
+        self.continuum_selection_lines.append(self.ax.axvline(xdata, color='green', ls='--'))
+        self._update_plot()
+
+    def _cancel_last_continuum(self):
+        try:
+            self.continuum_intervals.pop()
+            point = self.continuum_selection_lines.pop()
+            self.ax.lines.remove(point)
+            self._cancel_continuum_fit_line()
+            self._update_plot()
+        except IndexError:
+            pass
+
+    def _cancel_continuum_lines(self):
+        for _ in range(4):
+            self._cancel_last_continuum()
+        self._cancel_continuum_fit_line()
+        self._update_plot()
+
+    # Continuum fit line
+
+    def continuum_fit(self):
+        continuum_mask = (
+            ((self.wl >= self.continuum_intervals[0]) &
+             (self.wl < self.continuum_intervals[1])) |
+            ((self.wl >= self.continuum_intervals[2]) &
+             (self.wl < self.continuum_intervals[3]))
+        )
+        wl = self.wl[continuum_mask]
+        flux = self.flux[continuum_mask]
+        self.m, self.q = np.polyfit(wl, flux, 1)
+
+    def _add_fit_continuum(self):
+        self.continuum_fit()
+        self.continuum_intervals.sort()
+        self._plot_continuum_fit_line()
+
+    def _plot_continuum_fit_line(self):
+        if not self.continuum_fit_line:
+            x_bin = np.arange(self.continuum_intervals[0], self.continuum_intervals[3], 1)
+            self.continuum_fit_line = self.ax.plot(x_bin, self.q + self.m * x_bin, color='red')
+            self._update_plot()
+
+    def _cancel_continuum_fit_line(self):
+        if self.continuum_fit_line:
+            self.ax.lines.remove(self.continuum_fit_line[0])
+            self.continuum_fit_line = None
+
+    # Masks
+
+    def _add_mask(self, xdata):
+        self.masks.append(xdata)
+        if len(self.masks) % 2 == 0:
+            self._plot_mask_span(self.masks[-2], xdata)
+
+    def _plot_mask_span(self, x1, x2):
+        self.spans.append(self.ax.axvspan(x1, x2, color='grey', alpha=0.5))
+        self._update_plot()
+
+    def _cancel_last_mask(self):
+        if len(self.masks) % 2 == 1:
+            self.masks.pop()
+        try:
+            self.masks.pop()
+            self.masks.pop()
+            span = self.spans.pop()
+            self.ax.patches.remove(span)
+            self._update_plot()
+        except IndexError:
+            pass
+
+    # Line fit
+
+    def _fit_line(self, n_components, fit_model):
+        # TODO: ricordarsi di sortare le maschere prima di mascherare la linea
+        if n_components in [1, 2, 3]:
+            self.fit_pars, _ = fit(self.wl, self.flux, self.ivar, n_components, fit_model)
+            self.fit_line = gaussian_model()  # TODO: generalize this call to accept more models
+            self._update_plot()
+        else:
+            pass
+
+    def _cancel_fit(self):
+        try:
+            pass
+        except IndexError:
+            pass
 
     def _reset_mode(self):
         self.fit_mode = False
         self.continuum_mode = False
-        self.masks_mode = False
+        self.mask_mode = False
 
-def continuum_fit(wl, flux, interval):
-    continuum_mask = (
-        ((wl >= interval[0]) &
-        (wl < interval[1])) |
-        ((wl >= interval[2]) &
-        (wl < interval[3]))
-    )
-    wl = wl[continuum_mask]
-    flux = flux[continuum_mask]
-    m, q = np.polyfit(wl, flux, 1)
-    return m, q
+    def _save_plot(self):
+        if (len(self.continuum) == 4) and (len(self.masks) % 2 == 0):
+            self.intervals_dict['continuum'] = self.continuum
+            self.intervals_dict['masks'] = self.masks
+            name = self.intervals_dict['name'] + '.png'
+            plt.savefig(config.PREPARATION_PLOTS + name, dpi=300)
+            plt.close(self.fig)
+        else:
+            print(f"Error:\nContinuum selection: {len(self.continuum_intervals)}/4\
+            \tPunti maschera: {len(self.masks)} (must be even).")
+
+    def on_key(self, event):
+        if event.key == 'c':
+            if not self.continuum_mode:
+                print("Seleziona intervalli per il continuo (max 4 punti); 'canc' per \
+                eliminare ultima selezione")
+            self._reset_mode()
+            self.continuum_mode = True
+        elif event.key == 'm':
+            if not self.mask_mode:
+                print("Seleziona coppie di punti per mascherare un intervallo; 'canc' \
+                per eliminare ultima selezione")
+            self._reset_mode()
+            self.mask_mode = True
+        elif event.key == 'f':
+            if not self.fit_mode:
+                print("Choose the number of components (max 3): ")
+            self._reset_mode()
+            self.fit_mode = True
+        elif event.key == 'r':
+            print("Premere 'c' per il continuo; 'm' per le maschere; 'f4' per \
+            terminare e salvare")
+            self._reset_mode()
+        elif event.key == 'n':
+            self._cancel_continuum_lines()
+        elif event.key == 's':
+            self._save_plot()
+        elif self.fit_mode:
+            self.fit_mode = True
+            if event.key == '1':
+                n_components = 1
+            elif event.key == '2':
+                n_components = 2
+            elif event.key == '3':
+                n_components = 3
+            else:
+                pass
+            self._fit_line(n_components, self.fit_model)
+        elif event.key == 'delete':
+            if self.continuum_mode:
+                self._cancel_last_continuum()
+            elif self.mask_mode:
+                self._cancel_last_mask()
+            elif self.fit_mode:
+                self._cancel_fit()
+            else:
+                pass
+
+    def on_click(self, event):
+        if self.continuum_mode:
+            self._add_continuum_point(event.xdata)
+        elif self.mask_mode:
+            self._add_mask(event.xdata)
+
+    def on_close(self):
+        del self.continuum_intervals
+        del self.masks
+        del self.fit_pars
+
+    def get_param_dict(self):
+        return self.intervals_dict
+
+    def get_fit_param(self):
+        return self.fit_pars
 
 
 if __name__ == '__main__':
@@ -150,26 +270,14 @@ if __name__ == '__main__':
     wl, fl = obj.get_spectrum()
     ivar = obj.get_ivar()
 
-    intervals_dict = {
-        'name': "Name",
-        'continuum': config.CONTINUUM_INTERVALS,
-        'masks': []
-    }
+    interactive_plot = InteractiveLineFit(wl, fl, ivar)
+    plt.show()
 
-    m, q = continuum_fit(wl, fl, intervals_dict['continuum'])
-    intervals_dict['m'] = m
-    intervals_dict['q'] = q
+    intervals_dict = interactive_plot.get_param_dict()
+    fit_pars = interactive_plot.get_fit_param()
 
     f1350 = param.calc_f1350(intervals_dict['m'], intervals_dict['q'])
 
-    fig, ax = prepare_plot(intervals_dict, figsize=(15, 6))
+    par_dict = param.calc_params(fit_pars, redshift, f1350)
 
-    interactive_plot = InteractiveLineFit(fig)
-    plt.show()
-
-    par, cov = fit(wl, fl, ivar, n_components=2, mode='gaussian_mixture')
-    par_dict = param.calc_params(par, redshift)
-
-    # with open(os.path.join(file_path, 'pre_fit.pkl'), 'wb') as f:
-    #     pickle.dump(intervals_dict, f)
-
+    print(fit_pars)

@@ -1,6 +1,7 @@
 import math
 import config
 import numpy as np
+import utils
 from fit import extract_param_gaussians
 
 
