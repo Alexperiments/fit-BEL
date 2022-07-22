@@ -8,8 +8,8 @@
     - [ ] Add the error estimate procedure
     
 ### Bugs
-    - [ ] Fix the zoom reset
-    - [ ] Fix the masks re-draw
+- [ ] Fix the zoom reset
+- [ ] Fix the masks re-draw
 
 ### New features
 - [ ] Add different file formats in addition to `.fits` and `.txt`
