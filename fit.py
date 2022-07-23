@@ -48,3 +48,37 @@ def extract_param_gaussians(par):
     fwhm = calc_fwhm(x_bin, y_gaus) * 299792 / 1549
 
     return line_disp, fwhm, area
+
+
+if __name__ == '__main__':
+    from Spectrum import Spectrum
+    import matplotlib.pyplot as plt
+
+    file_path = 'examples/sample.fits'
+    redshift = 3
+    obj = Spectrum(file_path, redshift=redshift)
+    wl, fl = obj.get_spectrum()
+    ivar = obj.get_ivar()
+
+    continuum_mask = (
+        ((wl >= config.CONTINUUM_INTERVALS[0]) &
+         (wl < config.CONTINUUM_INTERVALS[1])) |
+        ((wl >= config.CONTINUUM_INTERVALS[2]) &
+         (wl < config.CONTINUUM_INTERVALS[3]))
+    )
+    cont_wl = wl[continuum_mask]
+    cont_fl = fl[continuum_mask]
+    m, q = np.polyfit(cont_wl, cont_fl, 1)
+
+    fl = fl - (m*wl + q)
+
+    fl = fl[(wl>1580) & (wl < 1630)]
+    ivar = ivar[(wl>1580) & (wl < 1630)]
+    wl = wl[(wl>1580) & (wl < 1630)]
+
+    fit_pars, _ = curve_fit(gaussian_model, wl, fl, sigma=ivar)
+    print(fit_pars)
+
+    plt.plot(wl, fl)
+    plt.plot(wl, gaussian_model(wl, *fit_pars))
+    plt.show()

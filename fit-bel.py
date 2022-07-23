@@ -61,13 +61,13 @@ class InteractiveLineFit:
         self._draw_all()
 
         keys_legend = [
-            r'n: cancel all intervals',
-            r'c: continuum selection mode',
-            r'm: mask selection mode',
-            r'f: fit selection mode',
-            r'r: exit selection mode',
+            r'[n]ew: cancel continuum intervals',
+            r'[c]ontinuum: continuum selection mode',
+            r'[m]ask: mask selection mode',
+            r'[f]it: fit selection mode',
+            r'[r]eset: exit selection mode',
             r'canc: cancel last entry',
-            r's: save intervals']
+            r'[s]save: save intervals']
         extra = Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0)
         plt.legend([extra] * len(keys_legend), keys_legend, loc='upper right', title='Keys')
 
@@ -165,20 +165,39 @@ class InteractiveLineFit:
         except IndexError:
             pass
 
+    def _mask_spectrum(self):
+        wl = self.wl.copy()
+        masks = sorted(self.masks)
+        bool_mask = np.full(len(self.wl), True)
+        for first, second in zip(masks[::2], masks[1::2]):
+            bool_mask = bool_mask & (~((wl > first) & (wl < second)))
+        return self.wl[bool_mask], self.flux[bool_mask], self.ivar[bool_mask]
+
     # Line fit
 
     def _fit_line(self, n_components, fit_model):
-        # TODO: ricordarsi di sortare le maschere prima di mascherare la linea
         if n_components in [1, 2, 3]:
-            self.fit_pars, _ = fit(self.wl, self.flux, self.ivar, n_components, fit_model)
-            self.fit_line = gaussian_model()  # TODO: generalize this call to accept more models
-            self._update_plot()
+            masked_wl, masked_flux, masked_ivar = self._mask_spectrum()
+            x_bin = np.arange(self.continuum_intervals[0], self.continuum_intervals[3], 1)
+            continuum_sub_flux = masked_flux - (self.q + self.m * masked_wl)
+            self.fit_pars, _ = fit(masked_wl, continuum_sub_flux, masked_ivar, n_components, fit_model)
+            fit_model = gaussian_model(x_bin, *self.fit_pars)  # TODO: generalize this call to accept more models
+            continuum_add_model = fit_model + (self.q + self.m * x_bin)
+            self._plot_fit_line(x_bin, continuum_add_model)
         else:
             pass
 
+    def _plot_fit_line(self, x, y):
+        self._cancel_fit()
+        self.fit_line = self.ax.plot(x, y, c='blue')
+        self._update_plot()
+
     def _cancel_fit(self):
         try:
-            pass
+            if self.fit_line:
+                self.ax.lines.remove(self.fit_line[0])
+                self.fit_line = None
+                self._update_plot()
         except IndexError:
             pass
 
@@ -224,18 +243,8 @@ class InteractiveLineFit:
             self._cancel_continuum_lines()
         elif event.key == 's':
             self._save_plot()
-        elif self.fit_mode:
-            self.fit_mode = True
-            if event.key == '1':
-                n_components = 1
-            elif event.key == '2':
-                n_components = 2
-            elif event.key == '3':
-                n_components = 3
-            else:
-                pass
-            self._fit_line(n_components, self.fit_model)
         elif event.key == 'delete':
+
             if self.continuum_mode:
                 self._cancel_last_continuum()
             elif self.mask_mode:
@@ -244,6 +253,17 @@ class InteractiveLineFit:
                 self._cancel_fit()
             else:
                 pass
+        if self.fit_mode:
+            self.fit_mode = True
+            if event.key == '1':
+                n_components = 1
+            elif event.key == '2':
+                n_components = 2
+            elif event.key == '3':
+                n_components = 3
+            else:
+                n_components = None
+            self._fit_line(n_components, self.fit_model)
 
     def on_click(self, event):
         if self.continuum_mode:
