@@ -30,7 +30,6 @@ def calc_mass(luminosity, sigma=None, fwhm=None, relation='VP06'):
 
     assert (sigma is not None) or (fwhm is not None), "The function needs a measure of the line width."
     assert not ((sigma is not None) and (fwhm is not None)), "Choose one between sigma and FWHM."
-    assert sigma > 0
     if relation == 'VP06':
         if sigma is not None:
             return 2 * np.log10(sigma / 1000) + 0.53 * (luminosity - 44) + 6.73
@@ -54,9 +53,9 @@ def calc_edd_ratio(lamL1350, mass):
 
 def calc_params(pars, redshift, f1350):
     d = {}
-    line_disp, fwhm, area = extract_param_gaussians(*pars)
+    line_disp, fwhm, area = extract_param_gaussians(pars)
 
-    dl, _ = utils.ned_calc(redshift)
+    dl = utils.ned_calc(redshift)
 
     d['LCIV'] = flux_to_lum(area, dl)
     d['fwhm'] = fwhm * 299792 / 1549

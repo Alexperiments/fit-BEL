@@ -19,8 +19,8 @@ class Spectrum:
     ):
         self.file_path = file_path
         self.data = self._read_data(skiprows, separator)
-        self.wavelength = self.data['lambda']
-        self.flux = self.data['flux']
+        self.wavelength = self.data['lambda'].values
+        self.flux = self.data['flux'].values
         self.redshift = redshift
         self.rest_frame = to_rest_frame
         self.linearize_wavelength = linearize_wavelength
@@ -32,6 +32,7 @@ class Spectrum:
         self._to_rest_frame()
 
         self.ivar = self._calculate_ivar()
+        self._mask_dead_pixels()
 
     def _linearize_wavelength(self):
         if self.linearize_wavelength:
@@ -61,7 +62,7 @@ class Spectrum:
 
     def _calculate_ivar(self):
         if 'ivar' in self.data.columns:
-            return self.data['ivar']
+            return self.data['ivar'].values
         if not self.rest_frame:
             config.IVAR_INTERVALS = config.IVAR_INTERVALS * (1 + self.redshift)
         mask = (self.wavelength >= config.IVAR_INTERVALS[0]) & (self.wavelength <= config.IVAR_INTERVALS[1])
@@ -79,6 +80,12 @@ class Spectrum:
         self.wavelength = self.wavelength[mask]
         self.flux = self.flux[mask]
         self.ivar = self.ivar[mask]
+
+    def _mask_dead_pixels(self):
+        dead_pixel_mask = self.ivar != 0
+        self.flux = self.flux[dead_pixel_mask]
+        self.ivar = self.ivar[dead_pixel_mask]
+        self.wavelength = self.wavelength[dead_pixel_mask]
 
     def get_spectrum(self):
         return self.wavelength, self.flux

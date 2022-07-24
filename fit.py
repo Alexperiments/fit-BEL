@@ -4,10 +4,15 @@ import numpy as np
 import config
 
 
-def gaussian_model(x, A, mean1, sigma1, B=0, mean2=0, sigma2=1, C=0, mean3=0, sigma3=1):
-    return (A * np.exp(-np.power((x - mean1) / sigma1, 2.) / 2.) +
-            B * np.exp(-np.power((x - mean2) / sigma2, 2.) / 2.) +
-            C * np.exp(-np.power((x - mean3) / sigma3, 2.) / 2.))
+def basic_gaussian(x, a, mean, sigma):
+    return a * np.exp(-((x - mean) / sigma)**2 / 2.)
+
+
+def gaussian_model(x, *pars):
+    model = 0
+    for a, mean, sigma in zip(pars[::3], pars[1::3], pars[2::3]):
+        model += basic_gaussian(x, a, mean, sigma)
+    return model
 
 
 def gaussian_pre_fit(n_components):
@@ -37,8 +42,7 @@ def fit(wl, fl, ivar, n_components, mode='gaussian_mixture'):
         model = gaussian_model
     else:
         raise ValueError("Fit mode not recognised.")
-    return curve_fit(model, wl, fl, p0=x0, bounds=bounds, sigma=np.sqrt(1 / ivar),
-                            maxfev=500000)
+    return curve_fit(model, wl, fl, p0=x0, bounds=bounds, sigma=np.sqrt(1 / ivar), maxfev=500000)
 
 
 def extract_param_gaussians(par):
@@ -60,25 +64,6 @@ if __name__ == '__main__':
     wl, fl = obj.get_spectrum()
     ivar = obj.get_ivar()
 
-    continuum_mask = (
-        ((wl >= config.CONTINUUM_INTERVALS[0]) &
-         (wl < config.CONTINUUM_INTERVALS[1])) |
-        ((wl >= config.CONTINUUM_INTERVALS[2]) &
-         (wl < config.CONTINUUM_INTERVALS[3]))
-    )
-    cont_wl = wl[continuum_mask]
-    cont_fl = fl[continuum_mask]
-    m, q = np.polyfit(cont_wl, cont_fl, 1)
-
-    fl = fl - (m*wl + q)
-
-    fl = fl[(wl>1580) & (wl < 1630)]
-    ivar = ivar[(wl>1580) & (wl < 1630)]
-    wl = wl[(wl>1580) & (wl < 1630)]
-
-    fit_pars, _ = curve_fit(gaussian_model, wl, fl, sigma=ivar)
-    print(fit_pars)
-
-    plt.plot(wl, fl)
-    plt.plot(wl, gaussian_model(wl, *fit_pars))
-    plt.show()
+    print(wl)
+    print(fl)
+    print(ivar)

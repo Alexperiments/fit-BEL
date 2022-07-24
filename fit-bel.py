@@ -9,11 +9,13 @@ from fit import fit, gaussian_model
 from Spectrum import Spectrum
 
 file_path = 'examples/sample.fits'
+target_path = 'plots/'
 a_v_extinction = 0.2
 
 
 class InteractiveLineFit:
-    def __init__(self, wl, flux, ivar, obj_name='line fit', fit_model='gaussian_mixture', figsize=(15, 7)):
+    def __init__(self, wl, flux, ivar, spectrum_dict,
+                 obj_name='line fit', fit_model='gaussian_mixture', figsize=(15, 7)):
         self.q = None
         self.m = None
         self.wl = wl
@@ -35,19 +37,17 @@ class InteractiveLineFit:
 
         self.continuum_fit()
 
-        self.intervals_dict = {
-            'name': obj_name,
-            'continuum': self.continuum_intervals,
-            'masks': self.masks,
-            'm': self.m,
-            'q': self.q,
-        }
+        self.spectrum_dict = spectrum_dict
+        self.spectrum_dict['name'] = obj_name
+        self.spectrum_dict['continuum'] = self.continuum_intervals
+        self.spectrum_dict['masks'] = self.masks
+        self.spectrum_dict['m'] = self.m
+        self.spectrum_dict['q'] = self.q
 
         self._init_plot(figsize)
 
         self.cid1 = self.fig.canvas.mpl_connect('key_press_event', self.on_key)
         self.cid2 = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
-        self.cid2 = self.fig.canvas.mpl_connect('close_event', self.on_close)
 
     def _init_plot(self, figsize):
         plt.rcParams['keymap.fullscreen'].remove('f')
@@ -56,7 +56,7 @@ class InteractiveLineFit:
         self.fig = plt.figure(figsize=figsize)
         self.ax = self.fig.add_subplot(111)
         self.ax.plot(self.wl, self.flux, color='black', lw=0.5)
-        self.ax.set_title(self.intervals_dict['name'])
+        self.ax.set_title(self.spectrum_dict['name'])
 
         self._draw_all()
 
@@ -207,12 +207,14 @@ class InteractiveLineFit:
         self.mask_mode = False
 
     def _save_plot(self):
-        if (len(self.continuum) == 4) and (len(self.masks) % 2 == 0):
-            self.intervals_dict['continuum'] = self.continuum
-            self.intervals_dict['masks'] = self.masks
-            name = self.intervals_dict['name'] + '.png'
-            plt.savefig(config.PREPARATION_PLOTS + name, dpi=300)
+        if (len(self.continuum_intervals) == 4) and (len(self.masks) % 2 == 0) and self.fit_line:
+            self.spectrum_dict['continuum'] = self.continuum_intervals
+            self.spectrum_dict['masks'] = self.masks
+            self.spectrum_dict['fit_pars'] = self.fit_pars
+            name = self.spectrum_dict['name'] + '.png'
+            plt.savefig(target_path + name, dpi=300)
             plt.close(self.fig)
+
         else:
             print(f"Error:\nContinuum selection: {len(self.continuum_intervals)}/4\
             \tPunti maschera: {len(self.masks)} (must be even).")
@@ -255,12 +257,8 @@ class InteractiveLineFit:
                 pass
         if self.fit_mode:
             self.fit_mode = True
-            if event.key == '1':
-                n_components = 1
-            elif event.key == '2':
-                n_components = 2
-            elif event.key == '3':
-                n_components = 3
+            if event.key in ['1', '2', '3']:
+                n_components = int(event.key)
             else:
                 n_components = None
             self._fit_line(n_components, self.fit_model)
@@ -271,13 +269,8 @@ class InteractiveLineFit:
         elif self.mask_mode:
             self._add_mask(event.xdata)
 
-    def on_close(self):
-        del self.continuum_intervals
-        del self.masks
-        del self.fit_pars
-
     def get_param_dict(self):
-        return self.intervals_dict
+        return self.spectrum_dict
 
     def get_fit_param(self):
         return self.fit_pars
@@ -285,19 +278,18 @@ class InteractiveLineFit:
 
 if __name__ == '__main__':
     file_path = 'examples/sample.fits'
-    redshift = 3
+    redshift = 3.15
     obj = Spectrum(file_path, redshift=redshift)
     wl, fl = obj.get_spectrum()
     ivar = obj.get_ivar()
 
-    interactive_plot = InteractiveLineFit(wl, fl, ivar)
+    spectrum_dict = {}
+
+    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict)
     plt.show()
 
-    intervals_dict = interactive_plot.get_param_dict()
-    fit_pars = interactive_plot.get_fit_param()
+    f1350 = param.calc_f1350(spectrum_dict['m'], spectrum_dict['q'])
 
-    f1350 = param.calc_f1350(intervals_dict['m'], intervals_dict['q'])
+    par_dict = param.calc_params(spectrum_dict['fit_pars'], redshift, f1350)
 
-    par_dict = param.calc_params(fit_pars, redshift, f1350)
-
-    print(fit_pars)
+    print(par_dict)
