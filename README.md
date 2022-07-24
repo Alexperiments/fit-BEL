@@ -14,6 +14,7 @@ End-to-end code to estimate AGN properties from a single spectrum
 ### Bugs
 - [x] Fix the zoom reset
 - [x] Fix the masks re-draw
+- [ ] Fix FWHM calculation
 
 ### New features
 - [ ] Add different file formats in addition to `.fits` and `.txt`
