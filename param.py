@@ -2,7 +2,23 @@ import math
 import config
 import numpy as np
 import utils
-from fit import extract_param_gaussians
+from fit import gaussian_model, extract_param_gaussians
+
+
+def calc_params(pars, redshift, f1350):
+    d = {}
+    line_disp, fwhm, area = extract_param_gaussians(pars)
+    dl = utils.ned_calc(redshift)
+    d['lineLuminosity'] = flux_to_lum(area, dl)
+    d['FWHM'] = fwhm * 299792 / config.LINE_CENTROID
+    d['lineDispersion'] = line_disp * 299792 / config.LINE_CENTROID
+    d['continuumInvarLuminosity'] = flux_to_lum(f1350, dl) + np.log10(1350)
+    d['bolLuminosity'] = d['continuumInvarLuminosity'] + np.log10(config.BOLOMETRIC_CORRECTION)
+    d['sigmaMass'] = calc_mass(d['continuumInvarLuminosity'], sigma=d['lineDispersion'])
+    d['fwhmMass'] = calc_mass(d['continuumInvarLuminosity'], fwhm=d['FWHM'])
+    d['sigmaEddRatio'] = calc_edd_ratio(d['continuumInvarLuminosity'], d['sigmaMass'])
+    d['fwhmEddRatio'] = calc_edd_ratio(d['continuumInvarLuminosity'], d['fwhmMass'])
+    return d
 
 
 def calc_mass(luminosity, sigma=None, fwhm=None, relation='VP06'):
@@ -28,8 +44,10 @@ def calc_mass(luminosity, sigma=None, fwhm=None, relation='VP06'):
         out: float or array_like
             mass estimate in Log10 scale, in unit of solar masses. """
 
-    assert (sigma is not None) or (fwhm is not None), "The function needs a measure of the line width."
-    assert not ((sigma is not None) and (fwhm is not None)), "Choose one between sigma and FWHM."
+    if (sigma is None) and (fwhm is None):
+        raise "The function needs a measure of the line width."
+    if (sigma is not None) and (fwhm is not None):
+        raise "Choose one between sigma and FWHM."
     if relation == 'VP06':
         if sigma is not None:
             return 2 * np.log10(sigma / 1000) + 0.53 * (luminosity - 44) + 6.73
@@ -37,12 +55,12 @@ def calc_mass(luminosity, sigma=None, fwhm=None, relation='VP06'):
             return 2 * np.log10(fwhm / 1000) + 0.53 * (luminosity - 44) + 6.66
 
 
-def calc_f1350(m, q):
-    return 1350 * m + q
+def calc_flux_from_continuum(m, q, lam=1350):
+    return lam * m + q
 
 
 def flux_to_lum(flux, dl):
-    return np.log10(flux) - 17 + np.log10(4 * math.pi) + 2 * np.log10(dl * 3.086) + 48
+    return np.log10(flux) + config.FLUX_LOG_UNITS + np.log10(4 * math.pi) + 2 * np.log10(dl * 3.086) + 48
 
 
 def calc_edd_ratio(lamL1350, mass):
@@ -51,24 +69,19 @@ def calc_edd_ratio(lamL1350, mass):
     return Lbol - Ledd
 
 
-def calc_params(pars, redshift, f1350):
-    d = {}
-    line_disp, fwhm, area = extract_param_gaussians(pars)
 
-    dl = utils.ned_calc(redshift)
-
-    d['LCIV'] = flux_to_lum(area, dl)
-    d['fwhm'] = fwhm * 299792 / 1549
-    d['line_disp'] = line_disp * 299792 / 1549
-    d['lamL1350'] = flux_to_lum(f1350, dl) + np.log10(1350)
-    d['Lbol'] = d['lamL1350'] + np.log10(config.BOLOMETRIC_CORRECTION)
-    d['Msigma'] = calc_mass(d['lamL1350'], sigma=d['line_disp'])
-    d['Mfwhm'] = calc_mass(d['lamL1350'], fwhm=d['fwhm'])
-    d['Rsigma'] = calc_edd_ratio(d['lamL1350'], d['Msigma'])
-    d['Rfwhm'] = calc_edd_ratio(d['lamL1350'], d['Mfwhm'])
-
-    return d
 
 
 if __name__ == '__main__':
-    pass
+    N_samples = 10
+
+    dl = utils.ned_calc(3)
+
+    A = np.random.normal(1, 0.1, N_samples)
+    mean = np.random.normal(1500, 4, N_samples)
+    sigma = np.random.normal(20, 1, N_samples)
+    lumin = np.random.normal(46, 0.1, N_samples)
+    f1350 = np.random.normal(1e-17, 1e-19, N_samples)
+    x_bin = np.arange(1000, 2000)
+
+    d = calc_params([A, mean, sigma], 3, f1350)

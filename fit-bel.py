@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-from matplotlib.artist import Artist
 from matplotlib.patches import Rectangle
 import numpy as np
 import config
@@ -52,6 +51,7 @@ class InteractiveLineFit:
     def _init_plot(self, figsize):
         plt.rcParams['keymap.fullscreen'].remove('f')
         plt.rcParams['keymap.save'].remove('s')
+        plt.rcParams['keymap.back'].remove('c')
 
         self.fig = plt.figure(figsize=figsize)
         self.ax = self.fig.add_subplot(111)
@@ -206,11 +206,12 @@ class InteractiveLineFit:
         self.continuum_mode = False
         self.mask_mode = False
 
-    def _save_plot(self):
+    def _save_and_exit(self):
         if (len(self.continuum_intervals) == 4) and (len(self.masks) % 2 == 0) and self.fit_line:
             self.spectrum_dict['continuum'] = self.continuum_intervals
             self.spectrum_dict['masks'] = self.masks
             self.spectrum_dict['fit_pars'] = self.fit_pars
+
             name = self.spectrum_dict['name'] + '.png'
             plt.savefig(target_path + name, dpi=300)
             plt.close(self.fig)
@@ -244,7 +245,7 @@ class InteractiveLineFit:
         elif event.key == 'n':
             self._cancel_continuum_lines()
         elif event.key == 's':
-            self._save_plot()
+            self._save_and_exit()
         elif event.key == 'delete':
 
             if self.continuum_mode:
@@ -278,17 +279,19 @@ class InteractiveLineFit:
 
 if __name__ == '__main__':
     file_path = 'examples/sample.fits'
-    redshift = 3.15
+    redshift = 3.1
     obj = Spectrum(file_path, redshift=redshift)
-    wl, fl = obj.get_spectrum()
-    ivar = obj.get_ivar()
+    wl = obj.wavelength
+    fl = obj.flux
+    ivar = obj.ivar
 
     spectrum_dict = {}
 
     interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict)
     plt.show()
 
-    f1350 = param.calc_f1350(spectrum_dict['m'], spectrum_dict['q'])
+    f1350 = param.calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'],
+                                           lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
 
     par_dict = param.calc_params(spectrum_dict['fit_pars'], redshift, f1350)
 

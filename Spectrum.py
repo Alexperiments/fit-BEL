@@ -62,12 +62,13 @@ class Spectrum:
 
     def _calculate_ivar(self):
         if 'ivar' in self.data.columns:
-            return self.data['ivar'].values
+            return self.data['ivar']
         if not self.rest_frame:
             config.IVAR_INTERVALS = config.IVAR_INTERVALS * (1 + self.redshift)
         mask = (self.wavelength >= config.IVAR_INTERVALS[0]) & (self.wavelength <= config.IVAR_INTERVALS[1])
         continuum = self.flux[mask]
-        return 1 / (np.var(continuum.values))
+        ivar = 1 / (np.var(continuum))
+        return np.full(len(self.wavelength), ivar)
 
     def _read_data(self, skiprows, separator):
         if self.file_path.endswith('.txt'):
@@ -87,28 +88,14 @@ class Spectrum:
         self.ivar = self.ivar[dead_pixel_mask]
         self.wavelength = self.wavelength[dead_pixel_mask]
 
-    def get_spectrum(self):
-        return self.wavelength, self.flux
-
-    def get_ivar(self):
-        return self.ivar
-
-    def __str__(self):
-        return self.file_path.split('/')[-1].split('.')[0]
-
-    def __len__(self):
-        return len(self.wavelength)
-
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
-    file_path = 'examples/sample.fits'
+    file_path = 'examples/sample.txt'
     obj = Spectrum(file_path, redshift=3)
     wl, fl = obj.get_spectrum()
     ivar = obj.get_ivar()
 
-    print(obj)
-    print(len(obj))
-    # plt.plot(wl, ivar)
-    # plt.show()
+    plt.plot(wl, fl)
+    plt.show()
