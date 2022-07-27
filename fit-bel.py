@@ -1,3 +1,6 @@
+import os
+import argparse
+import json
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
@@ -7,9 +10,16 @@ from fit import fit, gaussian_model
 
 from Spectrum import Spectrum
 
-file_path = 'examples/sample.fits'
-target_path = 'plots/'
-a_v_extinction = 0.2
+parser = argparse.ArgumentParser(prog='fit-BEL',
+                                    usage='%(prog)s path [options]',
+                                    description='Estimate the AGN parameters from a single epoch spectrum',
+                                    fromfile_prefix_chars='@')
+
+parser.add_argument('Path', metavar='path', type=str, help='the path to spectrum file')
+parser.add_argument('-z', '--redshift', type=float, required=True, help='redshift of the source')
+parser.add_argument('-e', '--extinction', type=float, required=True, help='A_v parameter')
+parser.add_argument('-o', '--output', type=str, help='optional output folder', default='output/')
+parser.add_argument('-p', '--plot', type=str, help='optional output plot folder', default='figure/')
 
 
 class InteractiveLineFit:
@@ -52,7 +62,6 @@ class InteractiveLineFit:
         plt.rcParams['keymap.fullscreen'].remove('f')
         plt.rcParams['keymap.save'].remove('s')
         plt.rcParams['keymap.back'].remove('c')
-
         self.fig = plt.figure(figsize=figsize)
         self.ax = self.fig.add_subplot(111)
         self.ax.plot(self.wl, self.flux, color='black', lw=0.5)
@@ -127,8 +136,8 @@ class InteractiveLineFit:
         self.m, self.q = np.polyfit(wl, flux, 1)
 
     def _add_fit_continuum(self):
-        self.continuum_fit()
         self.continuum_intervals.sort()
+        self.continuum_fit()
         self._plot_continuum_fit_line()
 
     def _plot_continuum_fit_line(self):
@@ -213,12 +222,16 @@ class InteractiveLineFit:
             self.spectrum_dict['fit_pars'] = self.fit_pars
 
             name = self.spectrum_dict['name'] + '.png'
-            plt.savefig(target_path + name, dpi=300)
+            plt.savefig(plot_path + name, dpi=300)
             plt.close(self.fig)
-
         else:
-            print(f"Error:\nContinuum selection: {len(self.continuum_intervals)}/4\
-            \tPunti maschera: {len(self.masks)} (must be even).")
+            print("Error! Before saving you should:")
+            if not len(self.continuum_intervals) == 4:
+                print(f"Select four points for the continuum selection ({len(self.continuum_intervals)}/4)")
+            elif not len(self.masks) % 2 == 0:
+                print(f"Even the number of point for the mask selection ({len(self.masks)})")
+            elif not self.fit_line:
+                print("Fit the emission line (press \"f\" and choose the number of components)")
 
     def on_key(self, event):
         if event.key == 'c':
@@ -278,21 +291,28 @@ class InteractiveLineFit:
 
 
 if __name__ == '__main__':
-    file_path = 'examples/sample.fits'
-    redshift = 3.1
+    args = parser.parse_args()
+    file_path = args.Path
+    redshift = args.redshift
+    a_v_extinction = args.extinction
+    output_path = args.output
+    plot_path = args.plot
+
     obj = Spectrum(file_path, redshift=redshift)
+    obj_name = obj.name
     wl = obj.wavelength
     fl = obj.flux
     ivar = obj.ivar
 
     spectrum_dict = {}
 
-    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict)
+    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict, obj_name=obj_name)
     plt.show()
 
-    f1350 = param.calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'],
-                                           lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
-
-    par_dict = param.calc_params(spectrum_dict['fit_pars'], redshift, f1350)
+    par_dict = param.calc_params(spectrum_dict, redshift)
 
     print(par_dict)
+
+    if output_path:
+        with open(output_path + obj_name + '.txt', 'w') as convert_file:
+            convert_file.write(json.dumps(par_dict))

@@ -5,8 +5,10 @@ import utils
 from fit import gaussian_model, extract_param_gaussians
 
 
-def calc_params(pars, redshift, f1350):
+def calc_params(spectrum_dict, redshift):
     d = {}
+    pars = spectrum_dict['fit_pars']
+    f1350 = calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'], lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
     line_disp, fwhm, area = extract_param_gaussians(pars)
     dl = utils.ned_calc(redshift)
     d['lineLuminosity'] = flux_to_lum(area, dl)

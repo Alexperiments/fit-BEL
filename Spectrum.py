@@ -18,7 +18,8 @@ class Spectrum:
             to_rest_frame=True,
     ):
         self.file_path = file_path
-        self.data = self._read_data(skiprows, separator)
+        self.name = self.file_path.split('/')[-1].split('.')[0]
+        self.data = read_data(self.file_path, skiprows, separator)
         self.wavelength = self.data['lambda'].values
         self.flux = self.data['flux'].values
         self.redshift = redshift
@@ -49,17 +50,6 @@ class Spectrum:
             self.wavelength = self.wavelength / (1 + self.redshift)
             self.flux = self.flux * (1 + self.redshift)
 
-    def _read_fits(self):
-        spec_df = Table.read(self.file_path, hdu=1).to_pandas()
-        spec_df.columns = [c.lower() for c in spec_df.columns]
-        spec_df.rename(columns={'loglam': 'lambda'}, inplace=True)
-        return spec_df
-
-    def _read_txt(self, skiprows, separator):
-        spec_df = pd.read_csv(self.file_path, sep=separator, skiprows=skiprows, header=None)
-        spec_df.columns = ['lambda', 'flux']
-        return spec_df
-
     def _calculate_ivar(self):
         if 'ivar' in self.data.columns:
             return self.data['ivar']
@@ -69,12 +59,6 @@ class Spectrum:
         continuum = self.flux[mask]
         ivar = 1 / (np.var(continuum))
         return np.full(len(self.wavelength), ivar)
-
-    def _read_data(self, skiprows, separator):
-        if self.file_path.endswith('.txt'):
-            return self._read_txt(skiprows, separator)
-        elif self.file_path.endswith('.fits'):
-            return self._read_fits()
 
     def _trim_data(self):
         mask = (self.wavelength >= config.TRIM_INTERVALS[0]) & (self.wavelength <= config.TRIM_INTERVALS[1])
@@ -89,13 +73,34 @@ class Spectrum:
         self.wavelength = self.wavelength[dead_pixel_mask]
 
 
+def read_data(file_path, skiprows, separator):
+    if file_path.endswith('.txt'):
+        return read_txt(file_path, skiprows, separator)
+    elif file_path.endswith('.fits'):
+        return read_fits(file_path)
+
+
+def read_fits(file_path):
+    spec_df = Table.read(file_path, hdu=1).to_pandas()
+    spec_df.columns = [c.lower() for c in spec_df.columns]
+    spec_df.rename(columns={'loglam': 'lambda'}, inplace=True)
+    return spec_df
+
+
+def read_txt(file_path, skiprows, separator):
+    spec_df = pd.read_csv(file_path, sep=separator, skiprows=skiprows, header=None)
+    spec_df.columns = ['lambda', 'flux']
+    return spec_df
+
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     file_path = 'examples/sample.txt'
     obj = Spectrum(file_path, redshift=3)
-    wl, fl = obj.get_spectrum()
-    ivar = obj.get_ivar()
+    wl = obj.wavelength
+    fl = obj.flux
+    ivar = obj.ivar
 
     plt.plot(wl, fl)
     plt.show()
