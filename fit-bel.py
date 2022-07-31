@@ -1,4 +1,3 @@
-import os
 import argparse
 import json
 import matplotlib.pyplot as plt
@@ -6,7 +5,7 @@ from matplotlib.patches import Rectangle
 import numpy as np
 import config
 import param
-from fit import fit, gaussian_model
+from fit import set_model
 
 from Spectrum import Spectrum
 
@@ -18,13 +17,13 @@ parser = argparse.ArgumentParser(prog='fit-BEL',
 parser.add_argument('Path', metavar='path', type=str, help='the path to spectrum file')
 parser.add_argument('-z', '--redshift', type=float, required=True, help='redshift of the source')
 parser.add_argument('-e', '--extinction', type=float, required=True, help='A_v parameter')
+parser.add_argument('-m', '--model', type=str, choices=['gaussians'], default='gaussians', help='fitting model')
 parser.add_argument('-o', '--output', type=str, help='optional output folder', default='output/')
 parser.add_argument('-p', '--plot', type=str, help='optional output plot folder', default='figure/')
 
 
 class InteractiveLineFit:
-    def __init__(self, wl, flux, ivar, spectrum_dict,
-                 obj_name='line fit', fit_model='gaussian_mixture', figsize=(15, 7)):
+    def __init__(self, wl, flux, ivar, spectrum_dict, model, obj_name='line fit', figsize=(15, 7)):
         self.q = None
         self.m = None
         self.wl = wl
@@ -42,8 +41,6 @@ class InteractiveLineFit:
         self.mask_mode = False
         self.fit_mode = False
 
-        self.fit_model = fit_model
-
         self.continuum_fit()
 
         self.spectrum_dict = spectrum_dict
@@ -57,6 +54,8 @@ class InteractiveLineFit:
 
         self.cid1 = self.fig.canvas.mpl_connect('key_press_event', self.on_key)
         self.cid2 = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
+
+        self.model = model
 
     def _init_plot(self, figsize):
         plt.rcParams['keymap.fullscreen'].remove('f')
@@ -184,14 +183,14 @@ class InteractiveLineFit:
 
     # Line fit
 
-    def _fit_line(self, n_components, fit_model):
+    def _fit_line(self, n_components):
         if n_components in [1, 2, 3]:
             masked_wl, masked_flux, masked_ivar = self._mask_spectrum()
             x_bin = np.arange(self.continuum_intervals[0], self.continuum_intervals[3], 1)
             continuum_sub_flux = masked_flux - (self.q + self.m * masked_wl)
-            self.fit_pars, _ = fit(masked_wl, continuum_sub_flux, masked_ivar, n_components, fit_model)
-            fit_model = gaussian_model(x_bin, *self.fit_pars)  # TODO: generalize this call to accept more models
-            continuum_add_model = fit_model + (self.q + self.m * x_bin)
+            self.fit_pars = self.model.fit(masked_wl, continuum_sub_flux, masked_ivar, n_components)
+            line_fit = self.model.composed_model(x_bin, *self.fit_pars)
+            continuum_add_model = line_fit + (self.q + self.m * x_bin)
             self._plot_fit_line(x_bin, continuum_add_model)
         else:
             pass
@@ -275,19 +274,13 @@ class InteractiveLineFit:
                 n_components = int(event.key)
             else:
                 n_components = None
-            self._fit_line(n_components, self.fit_model)
+            self._fit_line(n_components)
 
     def on_click(self, event):
         if self.continuum_mode:
             self._add_continuum_point(event.xdata)
         elif self.mask_mode:
             self._add_mask(event.xdata)
-
-    def get_param_dict(self):
-        return self.spectrum_dict
-
-    def get_fit_param(self):
-        return self.fit_pars
 
 
 if __name__ == '__main__':
@@ -297,6 +290,7 @@ if __name__ == '__main__':
     a_v_extinction = args.extinction
     output_path = args.output
     plot_path = args.plot
+    model = args.model
 
     obj = Spectrum(file_path, redshift=redshift)
     obj_name = obj.name
@@ -304,12 +298,14 @@ if __name__ == '__main__':
     fl = obj.flux
     ivar = obj.ivar
 
+    fit_model = set_model(model)
+
     spectrum_dict = {}
 
-    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict, obj_name=obj_name)
+    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict, fit_model, obj_name=obj_name)
     plt.show()
 
-    par_dict = param.calc_params(spectrum_dict, redshift)
+    par_dict = param.calc_params(spectrum_dict, redshift, fit_model)
 
     print(par_dict)
 
