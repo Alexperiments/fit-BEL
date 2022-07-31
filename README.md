@@ -9,6 +9,7 @@ End-to-end code to estimate AGN properties from a single spectrum
     - [x] Add mask selection procedure
     - [x] Add fit selection procedure
     - [x] Add parameters estimation
+    - [ ] Refactor the code to allow models modularity
     - [ ] Add error estimate procedure
     
 ### Bugs
