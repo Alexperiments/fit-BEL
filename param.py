@@ -2,14 +2,14 @@ import math
 import config
 import numpy as np
 import utils
-from fit import gaussian_model, extract_param_gaussians
+# from fit import extract_param_gaussians, fit_ensamble
 
 
-def calc_params(spectrum_dict, redshift):
+def calc_params(spectrum_dict, redshift, fit_model):
     d = {}
     pars = spectrum_dict['fit_pars']
     f1350 = calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'], lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
-    line_disp, fwhm, area = extract_param_gaussians(pars)
+    line_disp, fwhm, area = fit_model.calc_line_params(pars)
     dl = utils.ned_calc(redshift)
     d['lineLuminosity'] = flux_to_lum(area, dl)
     d['FWHM'] = fwhm * 299792 / config.LINE_CENTROID
@@ -71,6 +71,8 @@ def calc_edd_ratio(lamL1350, mass):
     return Lbol - Ledd
 
 
+#def estimate_errors(wl, fl, ivar, n_components, n_tries):
+#    pars_list = fit_ensamble(wl, fl, ivar, n_components, n_tries=n_tries)
 
 
 
