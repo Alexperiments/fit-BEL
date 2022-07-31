@@ -1,8 +1,7 @@
 import math
-import config
 import numpy as np
+import config
 import utils
-# from fit import extract_param_gaussians, fit_ensamble
 
 
 def calc_params(spectrum_dict, redshift, fit_model):

@@ -1,4 +1,6 @@
 import numpy as np
+import json
+import argparse
 
 
 def ned_calc(z, H0=70, Omega_m=0.3, Omega_vac=0.7):
@@ -42,3 +44,23 @@ def ned_calc(z, H0=70, Omega_m=0.3, Omega_vac=0.7):
     DL = DA / (az * az)
     DL_Mpc = (c / H0) * DL
     return DL_Mpc
+
+
+def output_file(path, dict):
+    with open(path, 'w') as convert_file:
+        convert_file.write(json.dumps(dict))
+
+
+def parser():
+    parser = argparse.ArgumentParser(prog='fit-BEL',
+                                     usage='%(prog)s path [options]',
+                                     description='Estimate the AGN parameters from a single epoch spectrum',
+                                     fromfile_prefix_chars='@')
+
+    parser.add_argument('Path', metavar='path', type=str, help='the path to spectrum file')
+    parser.add_argument('-z', '--redshift', type=float, required=True, help='redshift of the source')
+    parser.add_argument('-e', '--extinction', type=float, required=True, help='A_v parameter')
+    parser.add_argument('-m', '--model', type=str, choices=['gaussians'], default='gaussians', help='fitting model')
+    parser.add_argument('-o', '--output', type=str, help='optional output folder', default='output/')
+    parser.add_argument('-p', '--plot', type=str, help='optional output plot folder', default='figure/')
+    return parser

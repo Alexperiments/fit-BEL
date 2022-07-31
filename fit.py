@@ -1,8 +1,8 @@
-from scipy.optimize import curve_fit
 import math
-import numpy as np
 import config
+import numpy as np
 from abc import abstractmethod
+from scipy.optimize import curve_fit
 
 
 class BasicModel:
@@ -120,4 +120,3 @@ if __name__ == '__main__':
     t0 = time()
     pars_list = model.fit_ensamble(wl, fl, ivar, 1, n_tries=100)
     print(time()-t0)
-    print(pars_list.shape)

@@ -1,29 +1,15 @@
-import argparse
-import json
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
 import config
 import param
+import utils
 from fit import set_model
-
 from Spectrum import Spectrum
-
-parser = argparse.ArgumentParser(prog='fit-BEL',
-                                    usage='%(prog)s path [options]',
-                                    description='Estimate the AGN parameters from a single epoch spectrum',
-                                    fromfile_prefix_chars='@')
-
-parser.add_argument('Path', metavar='path', type=str, help='the path to spectrum file')
-parser.add_argument('-z', '--redshift', type=float, required=True, help='redshift of the source')
-parser.add_argument('-e', '--extinction', type=float, required=True, help='A_v parameter')
-parser.add_argument('-m', '--model', type=str, choices=['gaussians'], default='gaussians', help='fitting model')
-parser.add_argument('-o', '--output', type=str, help='optional output folder', default='output/')
-parser.add_argument('-p', '--plot', type=str, help='optional output plot folder', default='figure/')
 
 
 class InteractiveLineFit:
-    def __init__(self, wl, flux, ivar, spectrum_dict, model, obj_name='line fit', figsize=(15, 7)):
+    def __init__(self, wl, flux, ivar, spectrum_dict, model, obj_name='', figsize=(15, 7)):
         self.q = None
         self.m = None
         self.wl = wl
@@ -284,7 +270,9 @@ class InteractiveLineFit:
 
 
 if __name__ == '__main__':
+    parser = utils.parser()
     args = parser.parse_args()
+
     file_path = args.Path
     redshift = args.redshift
     a_v_extinction = args.extinction
@@ -310,5 +298,4 @@ if __name__ == '__main__':
     print(par_dict)
 
     if output_path:
-        with open(output_path + obj_name + '.txt', 'w') as convert_file:
-            convert_file.write(json.dumps(par_dict))
+        utils.output_file(output_path + obj_name + '.txt', par_dict)
