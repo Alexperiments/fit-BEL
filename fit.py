@@ -50,6 +50,13 @@ class BasicModel:
         pars, _ = curve_fit(model, wl, fl, p0=x0, bounds=bounds, sigma=np.sqrt(1 / ivar), maxfev=500000)
         return pars
 
+    def fit_ensamble(self, wl, fl_mocks, ivar, n_components, n_tries):
+        pars_list = []
+        for i in range(n_tries):
+            pars = self.fit(wl, fl_mocks[i], ivar, n_components)
+            pars_list.append(pars)
+        return pars_list
+
     def calc_line(self, pars):
         return self.composed_model(self.x_bin, *pars)
 
@@ -79,15 +86,6 @@ class Gaussians(BasicModel):
         fwhm = self.calc_fwhm(x_bin, y_gaus)
         return dispersion, fwhm, integral
 
-    def fit_ensamble(self, wl, fl, ivar, n_components, n_tries):
-        length = len(wl)
-        pars_list = []
-        fl_mocks = np.random.normal(fl, ivar, size=(n_tries, length))
-        for i in range(n_tries):
-            pars = self.fit(wl, fl_mocks[i], ivar, n_components)
-            pars_list.append(pars)
-        return pars_list
-
     def calc_line_dispersion(self, *pars):
         area = sum([a * sigma for a, sigma in zip(pars[::3], pars[2::3])])
         integral = np.sqrt(2 * math.pi) * area
@@ -104,6 +102,28 @@ def set_model(model):
         raise "This model is not implemented yet."
 
 
+def continuum(wl, flux):
+    continuum_mask = (
+        ((wl >= config.CONTINUUM_INTERVALS[0]) &
+         (wl < config.CONTINUUM_INTERVALS[1])) |
+        ((wl >= config.CONTINUUM_INTERVALS[2]) &
+         (wl < config.CONTINUUM_INTERVALS[3]))
+    )
+    wl = wl[continuum_mask]
+    flux = flux[continuum_mask]
+    m, q = np.polyfit(wl, flux, 1)
+    return m, q
+
+
+def continuum_ensamble(wl, fl_mocks):
+    m_list, q_list = [], []
+    for i in range(fl_mocks.shape[0]):
+        m, q = continuum(wl, fl_mocks[i])
+        m_list.append(m)
+        q_list.append(q)
+    return m_list, q_list
+
+
 if __name__ == '__main__':
     from Spectrum import Spectrum
     from time import time
@@ -117,6 +137,10 @@ if __name__ == '__main__':
 
     model = Gaussians()
 
+    length = len(wl)
+    n_tries = 100
+    fl_mocks = np.random.normal(fl, ivar, size=(n_tries, length))
+
     t0 = time()
-    pars_list = model.fit_ensamble(wl, fl, ivar, 1, n_tries=100)
+    pars_list = model.fit_ensamble(wl, fl_mocks, ivar, 1, n_tries)
     print(time()-t0)

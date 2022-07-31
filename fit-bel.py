@@ -4,12 +4,14 @@ import numpy as np
 import config
 import param
 import utils
-from fit import set_model
+import fit
 from Spectrum import Spectrum
+
+from time import time
 
 
 class InteractiveLineFit:
-    def __init__(self, wl, flux, ivar, spectrum_dict, model, obj_name='', figsize=(15, 7)):
+    def __init__(self, wl, flux, ivar, spectrum_dict, model, n_tries, obj_name='', figsize=(15, 7)):
         self.q = None
         self.m = None
         self.wl = wl
@@ -27,14 +29,14 @@ class InteractiveLineFit:
         self.mask_mode = False
         self.fit_mode = False
 
-        self.continuum_fit()
+        self.m, self.q = fit.continuum(self.wl, self.flux)
 
-        self.spectrum_dict = spectrum_dict
-        self.spectrum_dict['name'] = obj_name
-        self.spectrum_dict['continuum'] = self.continuum_intervals
-        self.spectrum_dict['masks'] = self.masks
-        self.spectrum_dict['m'] = self.m
-        self.spectrum_dict['q'] = self.q
+        self.dict = spectrum_dict
+        self.dict['name'] = obj_name
+        self.dict['continuum'] = self.continuum_intervals
+        self.dict['masks'] = self.masks
+        self.dict['m'] = self.m
+        self.dict['q'] = self.q
 
         self._init_plot(figsize)
 
@@ -42,6 +44,8 @@ class InteractiveLineFit:
         self.cid2 = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
 
         self.model = model
+        self.n_components = None
+        self.n_tries = n_tries
 
     def _init_plot(self, figsize):
         plt.rcParams['keymap.fullscreen'].remove('f')
@@ -50,7 +54,7 @@ class InteractiveLineFit:
         self.fig = plt.figure(figsize=figsize)
         self.ax = self.fig.add_subplot(111)
         self.ax.plot(self.wl, self.flux, color='black', lw=0.5)
-        self.ax.set_title(self.spectrum_dict['name'])
+        self.ax.set_title(self.dict['name'])
 
         self._draw_all()
 
@@ -109,20 +113,9 @@ class InteractiveLineFit:
 
     # Continuum fit line
 
-    def continuum_fit(self):
-        continuum_mask = (
-            ((self.wl >= self.continuum_intervals[0]) &
-             (self.wl < self.continuum_intervals[1])) |
-            ((self.wl >= self.continuum_intervals[2]) &
-             (self.wl < self.continuum_intervals[3]))
-        )
-        wl = self.wl[continuum_mask]
-        flux = self.flux[continuum_mask]
-        self.m, self.q = np.polyfit(wl, flux, 1)
-
     def _add_fit_continuum(self):
         self.continuum_intervals.sort()
-        self.continuum_fit()
+        self.m, self.q = fit.continuum(self.wl, self.flux)
         self._plot_continuum_fit_line()
 
     def _plot_continuum_fit_line(self):
@@ -202,13 +195,21 @@ class InteractiveLineFit:
 
     def _save_and_exit(self):
         if (len(self.continuum_intervals) == 4) and (len(self.masks) % 2 == 0) and self.fit_line:
-            self.spectrum_dict['continuum'] = self.continuum_intervals
-            self.spectrum_dict['masks'] = self.masks
-            self.spectrum_dict['fit_pars'] = self.fit_pars
-
-            name = self.spectrum_dict['name'] + '.png'
+            self.dict['continuum'] = self.continuum_intervals
+            self.dict['masks'] = self.masks
+            self.dict['fit_pars'] = self.fit_pars
+            name = self.dict['name'] + '.png'
             plt.savefig(plot_path + name, dpi=300)
             plt.close(self.fig)
+            masked_wl, masked_flux, masked_ivar = self._mask_spectrum()
+            length = len(masked_wl)
+            fl_mocks = np.random.normal(masked_flux, masked_ivar, size=(self.n_tries, length))
+            pars_list = self.model.fit_ensamble(masked_wl, fl_mocks, masked_ivar, self.n_components, self.n_tries)
+            m_list, q_list = fit.continuum_ensamble(masked_wl, fl_mocks)
+            self.dict['fit_pars_list'] = pars_list
+            self.dict['m_list'] = m_list
+            self.dict['q_list'] = q_list
+
         else:
             print("Error! Before saving you should:")
             if not len(self.continuum_intervals) == 4:
@@ -261,6 +262,7 @@ class InteractiveLineFit:
             else:
                 n_components = None
             self._fit_line(n_components)
+            self.n_components = n_components
 
     def on_click(self, event):
         if self.continuum_mode:
@@ -279,6 +281,7 @@ if __name__ == '__main__':
     output_path = args.output
     plot_path = args.plot
     model = args.model
+    n_tries = args.tries
 
     obj = Spectrum(file_path, redshift=redshift)
     obj_name = obj.name
@@ -286,14 +289,21 @@ if __name__ == '__main__':
     fl = obj.flux
     ivar = obj.ivar
 
-    fit_model = set_model(model)
+    fit_model = fit.set_model(model)
 
     spectrum_dict = {}
 
-    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict, fit_model, obj_name=obj_name)
+    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict, fit_model, n_tries, obj_name)
     plt.show()
 
+    n_components = 2
+
     par_dict = param.calc_params(spectrum_dict, redshift, fit_model)
+    par_dict = param.calc_errors(spectrum_dict, redshift, fit_model, par_dict)
+    # TODO: problems with uncert. estimation:
+    # 1) the output of fit.calc_line_params has the wrong shape: with 4 mock samples the output is 6 long (as 3*n_components)
+    # 2) the uncerts. are all zeros
+    # 3) check if errors make sense
 
     print(par_dict)
 

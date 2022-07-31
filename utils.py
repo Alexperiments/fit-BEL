@@ -61,6 +61,7 @@ def parser():
     parser.add_argument('-z', '--redshift', type=float, required=True, help='redshift of the source')
     parser.add_argument('-e', '--extinction', type=float, required=True, help='A_v parameter')
     parser.add_argument('-m', '--model', type=str, choices=['gaussians'], default='gaussians', help='fitting model')
+    parser.add_argument('-t', '--tries', type=int, default=4, help='MonteCarlo tries')
     parser.add_argument('-o', '--output', type=str, help='optional output folder', default='output/')
     parser.add_argument('-p', '--plot', type=str, help='optional output plot folder', default='figure/')
     return parser
