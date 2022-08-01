@@ -24,6 +24,7 @@ class InteractiveLineFit:
         self.spans = []
         self.fit_line = None
         self.fit_pars = None
+        self.pcov = None
 
         self.continuum_mode = False
         self.mask_mode = False
@@ -129,6 +130,12 @@ class InteractiveLineFit:
             self.ax.lines.remove(self.continuum_fit_line[0])
             self.continuum_fit_line = None
 
+    def _calc_cont_flux_error(self):
+        low = config.CONTINUUM_LUMINOSITY_LAMBDA - 10
+        high = config.CONTINUUM_LUMINOSITY_LAMBDA + 10
+        mask = (self.wl >= low) & (self.wl < high)
+        return np.std(np.sqrt(1/self.ivar[mask]))
+
     # Masks
 
     def _add_mask(self, xdata):
@@ -167,7 +174,7 @@ class InteractiveLineFit:
             masked_wl, masked_flux, masked_ivar = self._mask_spectrum()
             x_bin = np.arange(self.continuum_intervals[0], self.continuum_intervals[3], 1)
             continuum_sub_flux = masked_flux - (self.q + self.m * masked_wl)
-            self.fit_pars = self.model.fit(masked_wl, continuum_sub_flux, masked_ivar, n_components)
+            self.fit_pars, self.pcov = self.model.fit(masked_wl, continuum_sub_flux, masked_ivar, n_components)
             line_fit = self.model.composed_model(x_bin, *self.fit_pars)
             continuum_add_model = line_fit + (self.q + self.m * x_bin)
             self._plot_fit_line(x_bin, continuum_add_model)
@@ -201,14 +208,9 @@ class InteractiveLineFit:
             name = self.dict['name'] + '.png'
             plt.savefig(plot_path + name, dpi=300)
             plt.close(self.fig)
-            masked_wl, masked_flux, masked_ivar = self._mask_spectrum()
-            length = len(masked_wl)
-            fl_mocks = np.random.normal(masked_flux, masked_ivar, size=(self.n_tries, length))
-            pars_list = self.model.fit_ensamble(masked_wl, fl_mocks, masked_ivar, self.n_components, self.n_tries)
-            m_list, q_list = fit.continuum_ensamble(masked_wl, fl_mocks)
-            self.dict['fit_pars_list'] = pars_list
-            self.dict['m_list'] = m_list
-            self.dict['q_list'] = q_list
+
+            self.dict['fit_pars_list'] = param.calc_mock_pars(self.fit_pars, self.pcov, self.n_tries)
+            self.dict['continuumFluxErr'] = self._calc_cont_flux_error()
 
         else:
             print("Error! Before saving you should:")
@@ -297,6 +299,8 @@ if __name__ == '__main__':
     plt.show()
 
     n_components = 2
+
+    print(spectrum_dict)
 
     par_dict = param.calc_params(spectrum_dict, redshift, fit_model)
     par_dict = param.calc_errors(spectrum_dict, redshift, fit_model, par_dict)
