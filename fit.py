@@ -47,8 +47,8 @@ class BasicModel:
     def fit(self, wl, fl, ivar, n_components):
         x0, bounds = self.pre_fit(n_components)
         model = self.composed_model
-        pars, _ = curve_fit(model, wl, fl, p0=x0, bounds=bounds, sigma=np.sqrt(1 / ivar), maxfev=500000)
-        return pars
+        pars, pcov = curve_fit(model, wl, fl, p0=x0, bounds=bounds, sigma=np.sqrt(1 / ivar), maxfev=500000)
+        return pars, pcov
 
     def fit_ensamble(self, wl, fl_mocks, ivar, n_components, n_tries):
         pars_list = []
@@ -83,7 +83,7 @@ class Gaussians(BasicModel):
         integral, dispersion = self.calc_line_dispersion(*pars)
         x_bin = np.linspace(config.TRIM_INTERVALS[0], config.TRIM_INTERVALS[-1], num=10000)
         y_gaus = self.composed_model(x_bin, *pars)
-        fwhm = self.calc_fwhm(x_bin, y_gaus)
+        fwhm = self.calc_fwhm(x_bin, y_gaus.T)
         return dispersion, fwhm, integral
 
     def calc_line_dispersion(self, *pars):
@@ -141,6 +141,11 @@ if __name__ == '__main__':
     n_tries = 100
     fl_mocks = np.random.normal(fl, ivar, size=(n_tries, length))
 
-    t0 = time()
-    pars_list = model.fit_ensamble(wl, fl_mocks, ivar, 1, n_tries)
-    print(time()-t0)
+    length = len(wl)
+    n_tries = 4
+    fl_mocks = np.random.normal(fl, ivar, size=(n_tries, length))
+
+    pars_list = model.fit_ensamble(wl, fl_mocks, ivar, 2, n_tries)
+    print(len(pars_list))
+    line_pars = model.calc_line_params(pars_list)
+    print(line_pars)
