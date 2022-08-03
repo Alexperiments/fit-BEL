@@ -22,7 +22,7 @@ class BasicModel:
         pass
 
     @abstractmethod
-    def calc_line_params(self, pars):
+    def calc_line_params(self):
         pass
 
     @abstractmethod
@@ -68,11 +68,17 @@ class Gaussians(BasicModel):
         if gaus.shape[1] == 1: gaus = gaus[:, 0]
         return gaus
 
-    def composed_model(self, x, *pars):
-        model = 0
-        for a, mean, sigma in zip(pars[::3], pars[1::3], pars[2::3]):
-            model += self.base_model(x, a, mean, sigma)
-        return model
+    def composed_model(self, x, *pars_list):
+        models = []
+        dim = np.array(pars_list).ndim
+        if dim == 1: pars_list = [pars_list]
+        for pars in pars_list:
+            model = 0
+            for a, mean, sigma in zip(pars[::3], pars[1::3], pars[2::3]):
+                model += self.base_model(x, a, mean, sigma)
+            models.append(model)
+        if dim == 1: models = models[0]
+        return np.array(models)
 
     def pre_fit(self, n_components):
         init_guess = config.FIT_GAUSSIAN_X0 * n_components
@@ -80,19 +86,29 @@ class Gaussians(BasicModel):
         return init_guess, bounds
 
     def calc_line_params(self, pars):
-        integral, dispersion = self.calc_line_dispersion(*pars)
+        integral, dispersion = self.calc_line_dispersion(pars)
         x_bin = np.linspace(config.TRIM_INTERVALS[0], config.TRIM_INTERVALS[-1], num=10000)
         y_gaus = self.composed_model(x_bin, *pars)
-        fwhm = self.calc_fwhm(x_bin, y_gaus.T)
+        fwhm = self.calc_fwhm(x_bin, y_gaus)
         return dispersion, fwhm, integral
 
-    def calc_line_dispersion(self, *pars):
-        area = sum([a * sigma for a, sigma in zip(pars[::3], pars[2::3])])
-        integral = np.sqrt(2 * math.pi) * area
-        centroid = sum([a * mean * sigma for a, mean, sigma in zip(pars[::3], pars[1::3], pars[2::3])]) / area
-        variance = sum([(mean ** 2 + sigma ** 2) * a * sigma for a, mean, sigma in
-                        zip(pars[::3], pars[1::3], pars[2::3])]) / area - centroid * centroid
-        return integral, np.sqrt(variance)
+    def calc_line_dispersion(self, pars_list):
+        integral_list = []
+        dispersion_list = []
+        dim = np.array(pars_list).ndim
+        if dim == 1: pars_list = [pars_list]
+        for pars in pars_list:
+            area = sum([a * sigma for a, sigma in zip(pars[::3], pars[2::3])])
+            integral = np.sqrt(2 * math.pi) * area
+            centroid = sum([a * mean * sigma for a, mean, sigma in zip(pars[::3], pars[1::3], pars[2::3])]) / area
+            variance = sum([(mean ** 2 + sigma ** 2) * a * sigma for a, mean, sigma in
+                            zip(pars[::3], pars[1::3], pars[2::3])]) / area - centroid * centroid
+            integral_list.append(integral)
+            dispersion_list.append(np.sqrt(variance))
+        if dim == 1:
+            integral_list = integral_list[0]
+            dispersion_list = dispersion_list[0]
+        return integral_list, dispersion_list
 
 
 def set_model(model):

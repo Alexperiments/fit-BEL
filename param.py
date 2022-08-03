@@ -1,7 +1,6 @@
 import math
 import numpy as np
 import config
-import fit
 import utils
 
 
@@ -54,14 +53,14 @@ def calc_edd_ratio(lamL1350, mass):
 
 
 def calc_mock_pars(best_pars, cov, n_tries):
-    length = len(best_pars)
-    return np.random.multivariate_normal(best_pars, cov, size=(n_tries, length))
+    return np.random.multivariate_normal(best_pars, cov, size=n_tries)
 
 
 def calc_params(spectrum_dict, redshift, fit_model):
     d = {}
     pars = spectrum_dict['fit_pars']
-    continuum_flux = calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'], lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
+    continuum_flux = calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'],
+                                              lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
     line_disp, fwhm, area = fit_model.calc_line_params(pars)
     dl = utils.ned_calc(redshift)
     d['lineLuminosity'] = flux_to_lum(area, dl)
@@ -78,17 +77,15 @@ def calc_params(spectrum_dict, redshift, fit_model):
 
 def calc_errors(spectrum_dict, redshift, fit_model, d):
     pars_list = spectrum_dict['fit_pars_list']
-    m_list = spectrum_dict['m_list']
-    q_list = spectrum_dict['q_list']
+    d['continuumFluxErr'] = np.log10(spectrum_dict['continuumFluxErr'])
     dl = utils.ned_calc(redshift)
 
     # parameters standard deviation
-    continuum_flux = np.std(calc_flux_from_continuum(m_list, q_list, lam=config.CONTINUUM_LUMINOSITY_LAMBDA))
     line_disp, fwhm, area = fit_model.calc_line_params(pars_list)
     d['lineLuminosityErr'] = np.std(flux_to_lum(area, dl))
-    d['FWHMErr'] = np.std(fwhm * 299792 / config.LINE_CENTROID)
-    d['lineDispersionErr'] = np.std(line_disp * 299792 / config.LINE_CENTROID)
-    d['continuumInvarLuminosityErr'] = np.std(flux_to_lum(continuum_flux, dl))
+    d['FWHMErr'] = np.std(fwhm) * 299792 / config.LINE_CENTROID
+    d['lineDispersionErr'] = np.std(line_disp) * 299792 / config.LINE_CENTROID
+    d['continuumInvarLuminosityErr'] = d['continuumFluxErr']
     d['bolLuminosityErr'] = d['continuumInvarLuminosityErr']
     d['sigmaMassErr'] = np.std(calc_mass(d['continuumInvarLuminosity'], sigma=d['lineDispersion']))
     d['fwhmMassErr'] = np.std(calc_mass(d['continuumInvarLuminosity'], fwhm=d['FWHM']))

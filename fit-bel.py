@@ -298,16 +298,13 @@ if __name__ == '__main__':
     interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict, fit_model, n_tries, obj_name)
     plt.show()
 
-    n_components = 2
-
-    print(spectrum_dict)
+    line_disp, fwhm, area = fit_model.calc_line_params(spectrum_dict['fit_pars_list'])
 
     par_dict = param.calc_params(spectrum_dict, redshift, fit_model)
     par_dict = param.calc_errors(spectrum_dict, redshift, fit_model, par_dict)
     # TODO: problems with uncert. estimation:
     # 1) the output of fit.calc_line_params has the wrong shape: with 4 mock samples the output is 6 long (as 3*n_components)
-    # 2) the uncerts. are all zeros
-    # 3) check if errors make sense
+    # 2) check if errors make sense
 
     print(par_dict)
 
