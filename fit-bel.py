@@ -134,7 +134,7 @@ class InteractiveLineFit:
         low = config.CONTINUUM_LUMINOSITY_LAMBDA - 10
         high = config.CONTINUUM_LUMINOSITY_LAMBDA + 10
         mask = (self.wl >= low) & (self.wl < high)
-        return np.std(np.sqrt(1/self.ivar[mask]))
+        return np.sqrt(1/np.mean(self.ivar[mask]))
 
     # Masks
 
@@ -303,8 +303,9 @@ if __name__ == '__main__':
     par_dict = param.calc_params(spectrum_dict, redshift, fit_model)
     par_dict = param.calc_errors(spectrum_dict, redshift, fit_model, par_dict)
     # TODO: problems with uncert. estimation:
-    # 1) the output of fit.calc_line_params has the wrong shape: with 4 mock samples the output is 6 long (as 3*n_components)
+    # 1) Find a way to calculate mass errors
     # 2) check if errors make sense
+    # 3) refactor the code (especially the physical parameters part)
 
     print(par_dict)
 

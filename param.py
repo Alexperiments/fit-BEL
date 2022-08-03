@@ -77,7 +77,8 @@ def calc_params(spectrum_dict, redshift, fit_model):
 
 def calc_errors(spectrum_dict, redshift, fit_model, d):
     pars_list = spectrum_dict['fit_pars_list']
-    d['continuumFluxErr'] = np.log10(spectrum_dict['continuumFluxErr'])
+    continuum_flux = calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'],
+                                              lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
     dl = utils.ned_calc(redshift)
 
     # parameters standard deviation
@@ -85,7 +86,7 @@ def calc_errors(spectrum_dict, redshift, fit_model, d):
     d['lineLuminosityErr'] = np.std(flux_to_lum(area, dl))
     d['FWHMErr'] = np.std(fwhm) * 299792 / config.LINE_CENTROID
     d['lineDispersionErr'] = np.std(line_disp) * 299792 / config.LINE_CENTROID
-    d['continuumInvarLuminosityErr'] = d['continuumFluxErr']
+    d['continuumInvarLuminosityErr'] = np.log10(1 + spectrum_dict['continuumFluxErr']/continuum_flux)
     d['bolLuminosityErr'] = d['continuumInvarLuminosityErr']
     d['sigmaMassErr'] = np.std(calc_mass(d['continuumInvarLuminosity'], sigma=d['lineDispersion']))
     d['fwhmMassErr'] = np.std(calc_mass(d['continuumInvarLuminosity'], fwhm=d['FWHM']))
