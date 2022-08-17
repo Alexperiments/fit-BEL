@@ -1,5 +1,5 @@
 # fit-BEL
-End-to-end code to estimate AGN properties from a single spectrum
+End-to-end code to estimate AGN properties from a single spectrum by fitting a Broad Emission Line (BEL)
 
 ### Tasks
 - [ ] Adapt the [original code](https://github.com/AleD1996/diana_et_al_2021) to a single script: 
