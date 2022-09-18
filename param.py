@@ -1,26 +1,7 @@
 import math
-import config
 import numpy as np
+import config
 import utils
-from fit import gaussian_model, extract_param_gaussians
-
-
-def calc_params(spectrum_dict, redshift):
-    d = {}
-    pars = spectrum_dict['fit_pars']
-    f1350 = calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'], lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
-    line_disp, fwhm, area = extract_param_gaussians(pars)
-    dl = utils.ned_calc(redshift)
-    d['lineLuminosity'] = flux_to_lum(area, dl)
-    d['FWHM'] = fwhm * 299792 / config.LINE_CENTROID
-    d['lineDispersion'] = line_disp * 299792 / config.LINE_CENTROID
-    d['continuumInvarLuminosity'] = flux_to_lum(f1350, dl) + np.log10(1350)
-    d['bolLuminosity'] = d['continuumInvarLuminosity'] + np.log10(config.BOLOMETRIC_CORRECTION)
-    d['sigmaMass'] = calc_mass(d['continuumInvarLuminosity'], sigma=d['lineDispersion'])
-    d['fwhmMass'] = calc_mass(d['continuumInvarLuminosity'], fwhm=d['FWHM'])
-    d['sigmaEddRatio'] = calc_edd_ratio(d['continuumInvarLuminosity'], d['sigmaMass'])
-    d['fwhmEddRatio'] = calc_edd_ratio(d['continuumInvarLuminosity'], d['fwhmMass'])
-    return d
 
 
 def calc_mass(luminosity, sigma=None, fwhm=None, relation='VP06'):
@@ -71,7 +52,47 @@ def calc_edd_ratio(lamL1350, mass):
     return Lbol - Ledd
 
 
+def calc_mock_pars(best_pars, cov, n_tries):
+    return np.random.multivariate_normal(best_pars, cov, size=n_tries)
 
+
+def calc_params(spectrum_dict, redshift, fit_model):
+    d = {}
+    pars = spectrum_dict['fit_pars']
+    continuum_flux = calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'],
+                                              lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
+    line_disp, fwhm, area = fit_model.calc_line_params(pars)
+    dl = utils.ned_calc(redshift)
+    d['lineLuminosity'] = flux_to_lum(area, dl)
+    d['FWHM'] = fwhm * 299792 / config.LINE_CENTROID
+    d['lineDispersion'] = line_disp * 299792 / config.LINE_CENTROID
+    d['continuumInvarLuminosity'] = flux_to_lum(continuum_flux, dl) + np.log10(1350)
+    d['bolLuminosity'] = d['continuumInvarLuminosity'] + np.log10(config.BOLOMETRIC_CORRECTION)
+    d['sigmaMass'] = calc_mass(d['continuumInvarLuminosity'], sigma=d['lineDispersion'])
+    d['fwhmMass'] = calc_mass(d['continuumInvarLuminosity'], fwhm=d['FWHM'])
+    d['sigmaEddRatio'] = calc_edd_ratio(d['continuumInvarLuminosity'], d['sigmaMass'])
+    d['fwhmEddRatio'] = calc_edd_ratio(d['continuumInvarLuminosity'], d['fwhmMass'])
+    return d
+
+
+def calc_errors(spectrum_dict, redshift, fit_model, d):
+    pars_list = spectrum_dict['fit_pars_list']
+    continuum_flux = calc_flux_from_continuum(spectrum_dict['m'], spectrum_dict['q'],
+                                              lam=config.CONTINUUM_LUMINOSITY_LAMBDA)
+    dl = utils.ned_calc(redshift)
+
+    # parameters standard deviation
+    line_disp, fwhm, area = fit_model.calc_line_params(pars_list)
+    d['lineLuminosityErr'] = np.std(flux_to_lum(area, dl))
+    d['FWHMErr'] = np.std(fwhm) * 299792 / config.LINE_CENTROID
+    d['lineDispersionErr'] = np.std(line_disp) * 299792 / config.LINE_CENTROID
+    d['continuumInvarLuminosityErr'] = np.log10(1 + spectrum_dict['continuumFluxErr']/continuum_flux)
+    d['bolLuminosityErr'] = d['continuumInvarLuminosityErr']
+    d['sigmaMassErr'] = np.std(calc_mass(d['continuumInvarLuminosity'], sigma=d['lineDispersion']))
+    d['fwhmMassErr'] = np.std(calc_mass(d['continuumInvarLuminosity'], fwhm=d['FWHM']))
+    d['sigmaEddRatioErr'] = np.std(calc_edd_ratio(d['continuumInvarLuminosity'], d['sigmaMass']))
+    d['fwhmEddRatioErr'] = np.std(calc_edd_ratio(d['continuumInvarLuminosity'], d['fwhmMass']))
+    return d
 
 
 if __name__ == '__main__':
@@ -86,4 +107,5 @@ if __name__ == '__main__':
     f1350 = np.random.normal(1e-17, 1e-19, N_samples)
     x_bin = np.arange(1000, 2000)
 
-    d = calc_params([A, mean, sigma], 3, f1350)
+    rand = np.random.normal(x_bin, x_bin, size=(100, 1000))
+    print(rand.shape)
