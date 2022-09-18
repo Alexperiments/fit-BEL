@@ -1,30 +1,15 @@
-import os
-import argparse
-import json
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
 import config
 import param
-from fit import fit, gaussian_model
-
+import utils
+import fit
 from Spectrum import Spectrum
-
-parser = argparse.ArgumentParser(prog='fit-BEL',
-                                    usage='%(prog)s path [options]',
-                                    description='Estimate the AGN parameters from a single epoch spectrum',
-                                    fromfile_prefix_chars='@')
-
-parser.add_argument('Path', metavar='path', type=str, help='the path to spectrum file')
-parser.add_argument('-z', '--redshift', type=float, required=True, help='redshift of the source')
-parser.add_argument('-e', '--extinction', type=float, required=True, help='A_v parameter')
-parser.add_argument('-o', '--output', type=str, help='optional output folder', default='output/')
-parser.add_argument('-p', '--plot', type=str, help='optional output plot folder', default='figure/')
 
 
 class InteractiveLineFit:
-    def __init__(self, wl, flux, ivar, spectrum_dict,
-                 obj_name='line fit', fit_model='gaussian_mixture', figsize=(15, 7)):
+    def __init__(self, wl, flux, ivar, spectrum_dict, model, n_tries, obj_name='', figsize=(15, 7)):
         self.q = None
         self.m = None
         self.wl = wl
@@ -37,26 +22,29 @@ class InteractiveLineFit:
         self.spans = []
         self.fit_line = None
         self.fit_pars = None
+        self.pcov = None
 
         self.continuum_mode = False
         self.mask_mode = False
         self.fit_mode = False
 
-        self.fit_model = fit_model
+        self.m, self.q = fit.continuum(self.wl, self.flux)
 
-        self.continuum_fit()
-
-        self.spectrum_dict = spectrum_dict
-        self.spectrum_dict['name'] = obj_name
-        self.spectrum_dict['continuum'] = self.continuum_intervals
-        self.spectrum_dict['masks'] = self.masks
-        self.spectrum_dict['m'] = self.m
-        self.spectrum_dict['q'] = self.q
+        self.dict = spectrum_dict
+        self.dict['name'] = obj_name
+        self.dict['continuum'] = self.continuum_intervals
+        self.dict['masks'] = self.masks
+        self.dict['m'] = self.m
+        self.dict['q'] = self.q
 
         self._init_plot(figsize)
 
         self.cid1 = self.fig.canvas.mpl_connect('key_press_event', self.on_key)
         self.cid2 = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
+
+        self.model = model
+        self.n_components = None
+        self.n_tries = n_tries
 
     def _init_plot(self, figsize):
         plt.rcParams['keymap.fullscreen'].remove('f')
@@ -65,7 +53,7 @@ class InteractiveLineFit:
         self.fig = plt.figure(figsize=figsize)
         self.ax = self.fig.add_subplot(111)
         self.ax.plot(self.wl, self.flux, color='black', lw=0.5)
-        self.ax.set_title(self.spectrum_dict['name'])
+        self.ax.set_title(self.dict['name'])
 
         self._draw_all()
 
@@ -124,20 +112,9 @@ class InteractiveLineFit:
 
     # Continuum fit line
 
-    def continuum_fit(self):
-        continuum_mask = (
-            ((self.wl >= self.continuum_intervals[0]) &
-             (self.wl < self.continuum_intervals[1])) |
-            ((self.wl >= self.continuum_intervals[2]) &
-             (self.wl < self.continuum_intervals[3]))
-        )
-        wl = self.wl[continuum_mask]
-        flux = self.flux[continuum_mask]
-        self.m, self.q = np.polyfit(wl, flux, 1)
-
     def _add_fit_continuum(self):
         self.continuum_intervals.sort()
-        self.continuum_fit()
+        self.m, self.q = fit.continuum(self.wl, self.flux)
         self._plot_continuum_fit_line()
 
     def _plot_continuum_fit_line(self):
@@ -150,6 +127,12 @@ class InteractiveLineFit:
         if self.continuum_fit_line:
             self.ax.lines.remove(self.continuum_fit_line[0])
             self.continuum_fit_line = None
+
+    def _calc_cont_flux_error(self):
+        low = config.CONTINUUM_LUMINOSITY_LAMBDA - 10
+        high = config.CONTINUUM_LUMINOSITY_LAMBDA + 10
+        mask = (self.wl >= low) & (self.wl < high)
+        return np.sqrt(1 / np.mean(self.ivar[mask]))
 
     # Masks
 
@@ -184,14 +167,14 @@ class InteractiveLineFit:
 
     # Line fit
 
-    def _fit_line(self, n_components, fit_model):
+    def _fit_line(self, n_components):
         if n_components in [1, 2, 3]:
             masked_wl, masked_flux, masked_ivar = self._mask_spectrum()
             x_bin = np.arange(self.continuum_intervals[0], self.continuum_intervals[3], 1)
             continuum_sub_flux = masked_flux - (self.q + self.m * masked_wl)
-            self.fit_pars, _ = fit(masked_wl, continuum_sub_flux, masked_ivar, n_components, fit_model)
-            fit_model = gaussian_model(x_bin, *self.fit_pars)  # TODO: generalize this call to accept more models
-            continuum_add_model = fit_model + (self.q + self.m * x_bin)
+            self.fit_pars, self.pcov = self.model.fit(masked_wl, continuum_sub_flux, masked_ivar, n_components)
+            line_fit = self.model.composed_model(x_bin, *self.fit_pars)
+            continuum_add_model = line_fit + (self.q + self.m * x_bin)
             self._plot_fit_line(x_bin, continuum_add_model)
         else:
             pass
@@ -217,13 +200,16 @@ class InteractiveLineFit:
 
     def _save_and_exit(self):
         if (len(self.continuum_intervals) == 4) and (len(self.masks) % 2 == 0) and self.fit_line:
-            self.spectrum_dict['continuum'] = self.continuum_intervals
-            self.spectrum_dict['masks'] = self.masks
-            self.spectrum_dict['fit_pars'] = self.fit_pars
-
-            name = self.spectrum_dict['name'] + '.png'
+            self.dict['continuum'] = self.continuum_intervals
+            self.dict['masks'] = self.masks
+            self.dict['fit_pars'] = self.fit_pars
+            name = self.dict['name'] + '.png'
             plt.savefig(plot_path + name, dpi=300)
             plt.close(self.fig)
+
+            self.dict['fit_pars_list'] = param.calc_mock_pars(self.fit_pars, self.pcov, self.n_tries)
+            self.dict['continuumFluxErr'] = self._calc_cont_flux_error()
+
         else:
             print("Error! Before saving you should:")
             if not len(self.continuum_intervals) == 4:
@@ -275,7 +261,8 @@ class InteractiveLineFit:
                 n_components = int(event.key)
             else:
                 n_components = None
-            self._fit_line(n_components, self.fit_model)
+            self._fit_line(n_components)
+            self.n_components = n_components
 
     def on_click(self, event):
         if self.continuum_mode:
@@ -283,20 +270,18 @@ class InteractiveLineFit:
         elif self.mask_mode:
             self._add_mask(event.xdata)
 
-    def get_param_dict(self):
-        return self.spectrum_dict
-
-    def get_fit_param(self):
-        return self.fit_pars
-
 
 if __name__ == '__main__':
+    parser = utils.parser()
     args = parser.parse_args()
+
     file_path = args.Path
     redshift = args.redshift
     a_v_extinction = args.extinction
     output_path = args.output
     plot_path = args.plot
+    model = args.model
+    n_tries = args.tries
 
     obj = Spectrum(file_path, redshift=redshift)
     obj_name = obj.name
@@ -304,15 +289,23 @@ if __name__ == '__main__':
     fl = obj.flux
     ivar = obj.ivar
 
+    fit_model = fit.set_model(model)
+
     spectrum_dict = {}
 
-    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict, obj_name=obj_name)
+    interactive_plot = InteractiveLineFit(wl, fl, ivar, spectrum_dict, fit_model, n_tries, obj_name)
     plt.show()
 
-    par_dict = param.calc_params(spectrum_dict, redshift)
+    line_disp, fwhm, area = fit_model.calc_line_params(spectrum_dict['fit_pars_list'])
+
+    par_dict = param.calc_params(spectrum_dict, redshift, fit_model)
+    par_dict = param.calc_errors(spectrum_dict, redshift, fit_model, par_dict)
+    # TODO: problems with uncert. estimation:
+    # 1) Find a way to calculate mass errors
+    # 2) check if errors make sense
+    # 3) refactor the code (especially the physical parameters part)
 
     print(par_dict)
 
     if output_path:
-        with open(output_path + obj_name + '.txt', 'w') as convert_file:
-            convert_file.write(json.dumps(par_dict))
+        utils.output_file(output_path + obj_name + '.txt', par_dict)
