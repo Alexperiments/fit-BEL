@@ -33,6 +33,12 @@ Run fit-BEL as:
 python fit-BEL.py examples/sample.fits -z 3.1 -e 2.1
 ```
 
+Run:
+```bash
+python fit-BEL.py -h
+```
+to get more information about the optional arguments
+
 ## Development
 
 ### Tasks
