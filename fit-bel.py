@@ -7,8 +7,6 @@ import utils
 import fit
 from Spectrum import Spectrum
 
-from time import time
-
 
 class InteractiveLineFit:
     def __init__(self, wl, flux, ivar, spectrum_dict, model, n_tries, obj_name='', figsize=(15, 7)):
@@ -134,7 +132,7 @@ class InteractiveLineFit:
         low = config.CONTINUUM_LUMINOSITY_LAMBDA - 10
         high = config.CONTINUUM_LUMINOSITY_LAMBDA + 10
         mask = (self.wl >= low) & (self.wl < high)
-        return np.sqrt(1/np.mean(self.ivar[mask]))
+        return np.sqrt(1 / np.mean(self.ivar[mask]))
 
     # Masks
 

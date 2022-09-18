@@ -4,12 +4,10 @@ import argparse
 
 
 def ned_calc(z, H0=70, Omega_m=0.3, Omega_vac=0.7):
-    '''Script basato sul NED cosmology calculator, per stimare DL e V(Gpc)'''
+    """Script basato sul NED cosmology calculator, per stimare DL e V(Gpc)"""
     # initialize constants
     WM = Omega_m  # Omega(matter)
     WV = Omega_vac  # Omega(vacuum) or lambda
-    WR = 0.  # Omega(radiation)
-    WK = 0.  # Omega curvaturve = 1-Omega(total)
     c = 299792.458  # velocity of light in km/sec
     h = H0 / 100.
     WR = 4.165E-5 / (h * h)  # includes 3 massless neutrino species, T0 = 2.72528
@@ -46,9 +44,9 @@ def ned_calc(z, H0=70, Omega_m=0.3, Omega_vac=0.7):
     return DL_Mpc
 
 
-def output_file(path, dict):
+def output_file(path, dictionary):
     with open(path, 'w') as convert_file:
-        convert_file.write(json.dumps(dict))
+        convert_file.write(json.dumps(dictionary))
 
 
 def parser():

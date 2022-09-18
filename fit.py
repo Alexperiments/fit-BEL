@@ -22,14 +22,15 @@ class BasicModel:
         pass
 
     @abstractmethod
-    def calc_line_params(self):
+    def calc_line_params(self, pars):
         pass
 
     @abstractmethod
-    def calc_line_dispersion(self):
+    def calc_line_dispersion(self, pars):
         pass
 
-    def calc_fwhm(self, x, ym):
+    @staticmethod
+    def calc_fwhm(x, ym):
         axis = ym.ndim - 1
         max_y = np.max(ym, axis=axis)
         if axis == 1: max_y = max_y[:, None]
@@ -38,7 +39,8 @@ class BasicModel:
         right = np.argmax(ym[::-1] >= half_max, axis=axis)
         return x[::-1][right] - x[left]
 
-    def vectorize_parameters(self, *pars):
+    @staticmethod
+    def vectorize_parameters(*pars):
         new_pars = []
         for par in pars:
             new_pars.append(np.expand_dims(np.array(par), 0))
@@ -62,6 +64,10 @@ class BasicModel:
 
 
 class Gaussians(BasicModel):
+    def __init__(self):
+        super().__init__()
+        self.x0 = [1, config.LINE_CENTROID, 1]
+
     def base_model(self, x, *pars):
         x, a, mean, sigma = self.vectorize_parameters(x, *pars)
         gaus = a * np.exp(-((x.T - mean) / sigma) ** 2 / 2.)
@@ -81,7 +87,7 @@ class Gaussians(BasicModel):
         return np.array(models)
 
     def pre_fit(self, n_components):
-        init_guess = config.FIT_GAUSSIAN_X0 * n_components
+        init_guess = self.x0 * n_components
         bounds = [[0, 0, 0] * n_components, [np.inf, np.inf, np.inf] * n_components]
         return init_guess, bounds
 
@@ -112,7 +118,7 @@ class Gaussians(BasicModel):
 
 
 def set_model(model):
-    if model=='gaussians' or model=='gaussian':
+    if model == 'gaussians' or model == 'gaussian':
         return Gaussians()
     else:
         raise "This model is not implemented yet."
@@ -120,10 +126,10 @@ def set_model(model):
 
 def continuum(wl, flux):
     continuum_mask = (
-        ((wl >= config.CONTINUUM_INTERVALS[0]) &
-         (wl < config.CONTINUUM_INTERVALS[1])) |
-        ((wl >= config.CONTINUUM_INTERVALS[2]) &
-         (wl < config.CONTINUUM_INTERVALS[3]))
+            ((wl >= config.CONTINUUM_INTERVALS[0]) &
+             (wl < config.CONTINUUM_INTERVALS[1])) |
+            ((wl >= config.CONTINUUM_INTERVALS[2]) &
+             (wl < config.CONTINUUM_INTERVALS[3]))
     )
     wl = wl[continuum_mask]
     flux = flux[continuum_mask]
@@ -142,7 +148,6 @@ def continuum_ensamble(wl, fl_mocks):
 
 if __name__ == '__main__':
     from Spectrum import Spectrum
-    from time import time
 
     file_path = 'examples/sample.fits'
     redshift = 3
@@ -155,10 +160,6 @@ if __name__ == '__main__':
 
     length = len(wl)
     n_tries = 100
-    fl_mocks = np.random.normal(fl, ivar, size=(n_tries, length))
-
-    length = len(wl)
-    n_tries = 4
     fl_mocks = np.random.normal(fl, ivar, size=(n_tries, length))
 
     pars_list = model.fit_ensamble(wl, fl_mocks, ivar, 2, n_tries)
