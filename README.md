@@ -49,13 +49,13 @@ to get more information about the optional arguments
     - [x] Add mask selection procedure
     - [x] Add fit selection procedure
     - [x] Add parameters estimation
-    - [ ] Refactor the code to allow models modularity
+    - [x] Refactor the code to allow models modularity
     - [ ] Add error estimate procedure
     
 ### Bugs
 - [x] Fix the zoom reset
 - [x] Fix the masks re-draw
-- [ ] Fix FWHM calculation
+- [x] Fix FWHM calculation
 
 ### New features
 - [ ] Add different file formats in addition to `.fits` and `.txt`
