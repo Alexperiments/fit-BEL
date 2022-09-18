@@ -5,6 +5,7 @@ import config
 import param
 import utils
 import fit
+import os
 from Spectrum import Spectrum
 
 
@@ -282,6 +283,9 @@ if __name__ == '__main__':
     plot_path = args.plot
     model = args.model
     n_tries = args.tries
+
+    os.makedirs(plot_path, exist_ok=True)
+    os.makedirs(output_path, exist_ok=True)
 
     obj = Spectrum(file_path, redshift=redshift)
     obj_name = obj.name
