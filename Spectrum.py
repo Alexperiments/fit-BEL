@@ -14,7 +14,7 @@ class Spectrum:
             a_v_extinction=None,
             linearize_wavelength=True,
             skiprows=2,
-            separator='\t',
+            separator='\s+',
             to_rest_frame=True,
     ):
         self.file_path = file_path
