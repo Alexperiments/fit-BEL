@@ -18,9 +18,14 @@ Create a virtual environment
 python -m venv my_env
 ```
 
-Activate the virtual environment:
+Activate the virtual environment for Unix OS:
 ```bash
 source my_env/bin/activate
+```
+
+If you are running Windows use this instead:
+```bash
+.\my_venv\Scripts\activate.ps1
 ```
 
 Install required dependencies into the virtual environment:
